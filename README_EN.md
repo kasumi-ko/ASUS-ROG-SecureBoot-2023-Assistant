@@ -96,7 +96,7 @@ Do not upload recovery packages, raw Default-key backups, BitLocker recovery key
 
 ## License and author
 
-Licensed under the [GNU General Public License v3.0](./LICENSE.txt).
+Licensed under the [GNU General Public License v3.0](./LICENSE).
 
 Author: 霞詩 @BILIBILI  
 Profile: <https://space.bilibili.com/4216920>
