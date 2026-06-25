@@ -86,7 +86,6 @@ PKDefault → PK
 
 - [安全说明](./SECURITY.md)
 - [更新记录](./CHANGELOG.md)
-- [v1.1 发布说明](./RELEASE-NOTES-v1.1.md)
 
 ## 许可与作者
 
