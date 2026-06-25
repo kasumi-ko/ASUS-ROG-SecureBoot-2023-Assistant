@@ -4,7 +4,7 @@
   <a href="./README.md">简体中文</a> · <strong>English</strong>
 </p>
 
-A Secure Boot 2023 diagnostic and controlled-repair tool for ASUS/ROG devices running Windows 10 or Windows 11.
+A Secure Boot 2023 diagnostic and controlled-repair tool for ASUS/ROG Windows devices.
 
 This project addresses a difficult class of failures where a device is already in Secure Boot Setup Mode but Windows still cannot complete the 2023 certificate rotation. It does not bypass checks or write every key at once. Detection, backup, firmware writes, restart handling, and verification are performed step by step against the real firmware state.
 
@@ -12,33 +12,33 @@ This project addresses a difficult class of failures where a device is already i
 
 ## Download
 
-Download these files from [Releases](https://github.com/kasumi-ko/ASUS-ROG-SecureBoot-2023-Assistant/releases/latest):
-
-- `ASUS-ROG-SecureBoot-2023-Assistant-v1.0.1.2-windows-x64.zip`
-- `ASUS-ROG-SecureBoot-2023-Assistant-v1.0.1.2-windows-x64.zip.sha256.txt`
+Download the runtime package that matches your device architecture from [Releases](https://github.com/kasumi-ko/ASUS-ROG-SecureBoot-2023-Assistant/releases/latest).
 
 GitHub's automatically generated `Source code (zip)` and `Source code (tar.gz)` files are source snapshots, not the end-user package.
 
 The current EXE is not Authenticode-signed. Verify the download with the SHA-256 file provided with the release.
 
-## Requirements
+## Basic requirements
 
 - Windows 10 or Windows 11;
 - UEFI boot mode;
 - an ASUS, ROG, or ASUSTeK device;
 - administrator privileges.
 
+Non-ASUS/ROG systems are read-only.
+
 ## Main features
 
 - Inspects Secure Boot, Setup Mode, `PK / KEK / db / dbx`, and all four Default variables;
 - validates the official Microsoft `Windows UEFI CA 2023` certificate;
 - restores the Secure Boot trust chain in a fixed order when every precondition is satisfied;
+- clearly shows why the repair button is unavailable;
 - runs the Windows Secure Boot 2023 servicing task and checks the result;
 - re-reads the real firmware state after restart instead of automatically continuing from an old UI checkpoint;
 - recovers interrupted workflows from verified evidence;
 - exports sanitized diagnostics and warns about Factory Keys reset risks.
 
-The program is not tied to one model or BIOS allow-list. Firmware writes are enabled only when the detected device, firmware variables, Setup Mode, active keys, Default keys, power state, BitLocker state, and pending-restart checks all pass.
+The program is not tied to one model or BIOS allow-list. Firmware writes are enabled only when the detected device, firmware variables, Setup Mode, active keys, Default keys, power state, system-drive BitLocker/device-encryption decryption state, and pending-restart checks all pass.
 
 ## Basic use
 
@@ -48,7 +48,7 @@ The program is not tied to one model or BIOS allow-list. Firmware writes are ena
 4. On first run, choose a language and storage folder, read the safety notice, and complete the confirmations.
 5. Follow the highlighted next action in the main window.
 
-A missing repair button normally means that one or more preconditions failed. Open `Detailed diagnostics` to see the reason.
+If the repair button is greyed out, the interface will show the blocking reason, such as a pending Windows restart, no fully decrypted system drive detected, unsafe power state, or unverified recovery evidence.
 
 ## Fixed repair order
 
@@ -82,21 +82,15 @@ A repair workflow recovery package may contain device-related raw Default-key ba
 
 Use the sanitized diagnostic report when reporting a problem. It excludes raw Default-key backups, BitLocker recovery keys, and personal files, but you should still review it before uploading.
 
-## Reporting an issue
-
-Include the Windows version, device model and BIOS version, the state shown by the program, and reproduction steps. Attach a sanitized diagnostic report when needed.
-
-Do not upload recovery packages, raw Default-key backups, BitLocker recovery keys, device serial numbers, or personal files.
-
 ## Documentation
 
 - [Security policy](./SECURITY.md)
 - [Changelog](./CHANGELOG.md)
-- [v1.0.1.2 release notes](./RELEASE-NOTES-v1.0.1.2.md)
+- [v1.1 release notes](./RELEASE-NOTES-v1.1.md)
 
 ## License and author
 
-Licensed under the [GNU General Public License v3.0](./LICENSE).
+Licensed under the [GNU General Public License v3.0](./LICENSE.txt).
 
 Author: 霞詩 @BILIBILI  
 Profile: <https://space.bilibili.com/4216920>
