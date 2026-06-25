@@ -86,7 +86,6 @@ Use the sanitized diagnostic report when reporting a problem. It excludes raw De
 
 - [Security policy](./SECURITY.md)
 - [Changelog](./CHANGELOG.md)
-- [v1.1 release notes](./RELEASE-NOTES-v1.1.md)
 
 ## License and author
 
