@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.1
+- Require the system drive to be explicitly detected as fully decrypted before enabling any UEFI write; unknown, encrypted, or protection-suspended BitLocker/device-encryption states now stay blocked with a visible reason.
+
+- 修复主按钮灰色不可点击时缺少原因说明的问题。
+- 调整 active Keys 已更新但 BIOS Default Keys 不完整时的风险等级。
+- 优化 PK 写入后真实固件状态已经正常但事务未闭合时的识别。
+- 增加 Secure Boot 启用前提示，覆盖启用后出现 Secure Boot Violation 红屏的处理路径。
+
+
+## 1.1 — 2026-06-25
+
+### Fixed
+
+- Added visible disabled-action reasons when the main repair button is shown but cannot be clicked.
+- Added `WriteAllowed` and write-block reason fields to detailed diagnostics, overview, logs, and diagnostic snapshots.
+- Treated firmware Default Keys that lack complete 2023 entries as a yellow caution state when active Keys are already updated; the Restore Factory Keys warning is shown in bold red text.
+- Improved post-PK state recognition so verified active Secure Boot state can continue to official rotation even when the prior transaction record was locked by a conservative validation failure.
+- Removed x64-only wording from the ordinary user README and runtime README.
+
+### Safety
+
+- No changes to the fixed write order. `PK` remains the final firmware write.
+- Restart/resume still performs detection only and never starts a new UEFI write automatically.
+- Advanced recovery still requires exact evidence and does not guess from key count.
+
 ## 1.0.1.2 — 2026-06-19
 
 ### Fixed
@@ -48,3 +73,7 @@ First public release.
 - Official Windows Secure Boot 2023 servicing workflow and event analysis.
 - Factory Keys reset-risk comparison.
 - Sanitized diagnostic report export and explicit file-location disclosure.
+### Build package r6
+
+- Fixed multi-architecture Build-EXE.ps1 result handling so PS2EXE pipeline messages cannot be mixed into the build result list under Set-StrictMode.
+
