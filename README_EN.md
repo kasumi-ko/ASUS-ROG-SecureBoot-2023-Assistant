@@ -2,7 +2,7 @@
 
 <a href="./README.md">简体中文</a>
 
-A Secure Boot 2023 certificate check and repair assistant for ASUS / ROG Windows devices.
+A Secure Boot 2023 certificate check and repair assistant for ASUS / ROG Windows devices
 
 ## Requirements
 
@@ -10,14 +10,14 @@ A Secure Boot 2023 certificate check and repair assistant for ASUS / ROG Windows
 * ASUS, ROG, or ASUSTeK device
 * Administrator permission
 
-*Non-ASUS/ROG devices only support read-only checks.*
+*Non-ASUS/ROG devices only support read-only checks*
 
 ## Before using
 
-* Back up important files first
-* Handle BitLocker / device encryption first and save the recovery key
-* If the app asks for Setup Mode, enter BIOS and clear Secure Boot Keys
-* Do not use Restore Factory Keys casually. Some BIOS factory Keys do not include the full 2023 certificates, and restoring them may roll the device back to older certificates
+* Back up important files.
+* Turn off BitLocker / device encryption.
+* Follow this [guide](https://www.asus.com/tw/support/faq/1049829/) to enable Setup Mode and clear Secure Boot Keys.
+* Do not use Restore Factory Keys casually. *Some BIOS default Keys do not include the full 2023 certificates, and restoring them may roll the device back to older certificates*
 
 ## Download
 
