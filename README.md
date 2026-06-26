@@ -17,7 +17,7 @@
 - 先备份重要文件
 - 先处理 BitLocker / 设备加密，并保存恢复密钥
 - 如果软件提示需要 Setup Mode，再进入 BIOS 清空 Secure Boot Keys
-- 不要随意使用 Restore Factory Keys。部分 BIOS 默认 Keys 不包含完整 2023 证书，恢复后可能回到旧证书
+- 不要随意使用 Restore Factory Keys！部分 BIOS 默认 Keys 不包含完整 2023 证书，恢复后可能回到旧证书！
 
 ## 下载
 
