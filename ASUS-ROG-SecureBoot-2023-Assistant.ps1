@@ -49,12 +49,12 @@ function Get-ClassificationDisplay {
         UnsupportedLegacy = @('不支持：Legacy/非UEFI启动','Unsupported: Legacy/non-UEFI boot')
         ReadOnlyNonAsus = @('只读：非ASUS/ROG设备','Read-only: non-ASUS/ROG device')
         FirmwareVariableReadFailure = @('固件变量读取失败','Firmware variable read failure')
-        PkWrittenPendingReboot = @('PK已写入，重启后复查','PK written; restart required for verification')
-        BlockedUnsafe = @('状态异常，已禁止写入','Unsafe state; writes blocked')
+        PkWrittenPendingReboot = @('PK已写入，重启后复查','PK written. Restart is required for verification')
+        BlockedUnsafe = @('状态异常，已禁止写入','Unsafe state. Writes are blocked')
         AdvancedRecoveryRequired = @('需要恢复校验资料','Recovery information required')
         Completed = @('2023轮换已完成','2023 rotation completed')
         TransactionMismatch = @('上次进度与设备状态不匹配','Saved progress does not match this device')
-        MissingDefaultVariables = @('Default变量不完整','Default variables incomplete')
+        MissingDefaultVariables = @('BIOS 默认 Keys 缺失或为空','BIOS factory Keys missing or empty')
         ReadyForRepair = @('可以按步骤修复','Ready to repair')
         RecoverableIntermediate = @('可恢复的中间状态','Recoverable intermediate state')
         AbnormalPartialKeys = @('异常的部分Keys状态','Abnormal partial-key state')
@@ -101,9 +101,9 @@ function Get-DefaultResetRiskLevelDisplay {
     return $Level
 }
 
-# ASUS/ROG Secure Boot 2023 检测与修复辅助工具
-# 目标运行环境：Windows 10/11，Windows PowerShell 5.1，管理员权限
-# 设计原则：以真实 UEFI 状态为准；默认只读；逐步写入；每步回读；中断后重新检测；不自动连续写入。
+# ASUS/ROG Secure Boot 2023 checker and repair assistant
+# Target runtime: Windows 10/11, Windows PowerShell 5.1, administrator rights
+# Design rule: trust the real UEFI state, read first, write one step at a time, verify after each step, re-detect after interruption, and never continue writes automatically.
 
 function Get-CurrentProgramPath {
     # Script mode: use the entry script definition. PS2EXE mode: use argv[0], which
@@ -144,7 +144,7 @@ $script:AuthorPlatform = '@BILIBILI'
 $script:AuthorUrl = 'https://space.bilibili.com/4216920'
 $script:RepositoryUrl = 'https://github.com/kasumi-ko/ASUS-ROG-SecureBoot-2023-Assistant'
 $script:LicenseName = 'GNU GPL v3.0'
-$script:OobeVersion = '2026-06-26-v1.2-r8'
+$script:OobeVersion = '2026-06-27-v1.2-r12'
 $script:OfficialCertificateUrl = 'https://go.microsoft.com/fwlink/?linkid=2239776'
 $script:OfficialCertificateFileName = 'Windows UEFI CA 2023.cer'
 $script:OfficialCertificateSize = 1454
@@ -418,7 +418,7 @@ function Assert-PackageIntegrity {
         $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
         if ($actual -ne $expected) { $failures += ((L 'SHA-256不匹配：{0}' 'SHA-256 mismatch: {0}') -f $relative) }
     }
-    if ($failures.Count -gt 0) { throw ((L '软件包完整性校验失败：' 'Package integrity validation failed: ') + ($failures -join '; ')) }
+    if ($failures.Count -gt 0) { throw ((L '软件包完整性校验失败：' 'Package integrity validation failed: ') + ($failures -join ', ')) }
 }
 
 function Test-PathsEqual {
@@ -586,7 +586,7 @@ function Get-BackupDirectoryValidation {
                 New-Item -ItemType Directory -Path $resolved -Force -ErrorAction Stop | Out-Null
                 $probeRoot = $resolved
             } else {
-                # OOBE输入过程中只探测最近存在的上级目录，避免为每个未完成路径创建垃圾文件夹。
+                # During OOBE input, probe only the nearest existing parent folder to avoid creating folders for unfinished paths.
                 $probeRoot = (Resolve-Path -LiteralPath $parent -ErrorAction Stop).Path
             }
         }
@@ -612,7 +612,7 @@ function Get-BackupDirectoryValidation {
             throw (L ('无法验证备份目录所在磁盘：' + $_.Exception.Message) ('Unable to validate the drive that contains the backup folder: ' + $_.Exception.Message))
         }
         if ($drive.DriveType -ne [IO.DriveType]::Fixed) {
-            throw (L ('备份目录必须位于本地固定磁盘；当前类型：' + $drive.DriveType) ('The backup folder must be on a local fixed disk. Current type: ' + $drive.DriveType))
+            throw (L ('备份目录必须位于本地固定磁盘。当前类型：' + $drive.DriveType) ('The backup folder must be on a local fixed disk. Current type: ' + $drive.DriveType))
         }
         if (-not $result.IsNetworkPath -and $result.FreeBytes -gt 0 -and $result.FreeBytes -lt 20971520) {
             throw '备份目录所在磁盘可用空间不足20 MB。'
@@ -995,10 +995,10 @@ function Get-BitLockerState {
 function Get-BitLockerBlockReason {
     param([object]$BitLocker)
     if (-not $BitLocker.IsKnown) {
-        return (L '未检测到系统盘已完全解密，禁止继续写入。' 'System drive is not detected as fully decrypted; writes are blocked.')
+        return (L '未检测到系统盘已完全解密，禁止继续写入。' 'System drive is not detected as fully decrypted. Writes are blocked.')
     }
     if (-not $BitLocker.IsFullyDecrypted) {
-        return (L '系统盘未完全解密，禁止继续写入。' 'System drive is not fully decrypted; writes are blocked.')
+        return (L '系统盘未完全解密，禁止继续写入。' 'System drive is not fully decrypted. Writes are blocked.')
     }
     return ''
 }
@@ -1074,12 +1074,12 @@ function Get-ReferenceBootmgfwSignatureState {
             $result.Status = [string]$sig.Status
             if ($null -ne $sig.SignerCertificate) { $result.Signer = [string]$sig.SignerCertificate.Subject }
             if ($sig.Status -eq 'Valid') {
-                $result.Message = L 'Windows参考bootmgfw.efi签名有效；该检查不等同于EFI分区实际文件签名。' 'The Windows reference bootmgfw.efi signature is valid; this is not the same as verifying the actual file on the EFI partition.'
+                $result.Message = L 'Windows参考bootmgfw.efi签名有效。该检查不等同于EFI分区实际文件签名。' 'The Windows reference bootmgfw.efi signature is valid. This is not the same as verifying the actual file on the EFI partition.'
             } else {
                 $result.Message = ((L 'Windows 参考 bootmgfw.efi 签名状态异常：{0}。需要先检查启动文件。' 'The Windows reference bootmgfw.efi signature is abnormal: {0}. Check the boot file first.') -f $result.Status)
             }
         } else {
-            $result.Message = L '未找到Windows参考bootmgfw.efi，无法验证启动文件签名。' 'The Windows reference bootmgfw.efi file was not found; boot-file signature cannot be verified.'
+            $result.Message = L '未找到Windows参考bootmgfw.efi，无法验证启动文件签名。' 'The Windows reference bootmgfw.efi file was not found. Boot-file signature cannot be verified.'
         }
     } catch {
         $result.Message = ((L 'bootmgfw.efi签名检查失败：{0}' 'bootmgfw.efi signature check failed: {0}') -f $_.Exception.Message)
@@ -1091,7 +1091,7 @@ function Get-ReferenceBootmgfwSignatureState {
 function New-BootChainNotNeededState {
     param([bool]$SecureBootEnabled = $false)
     $message = if ($SecureBootEnabled) {
-        L 'Secure Boot 已启用；启动链检查当前无需处理。' 'Secure Boot is already enabled; boot-chain check is not needed now.'
+        L 'Secure Boot 已启用。启动链检查当前无需处理。' 'Secure Boot is already enabled. Boot-chain check is not needed now.'
     } else {
         L '当前状态不需要启用前启动链检查。' 'This state does not need a pre-enable boot-chain check.'
     }
@@ -1104,10 +1104,10 @@ function New-BootChainNotNeededState {
         SuspiciousFirmwareEntries = ''
         ThirdPartyEfiIndicators = ''
         ExternalBootIndicators = ''
-        EfiPartitionScanStatus = L '未执行；当前状态无需检查。' 'Not run; not needed for the current state.'
+        EfiPartitionScanStatus = L '未执行。当前状态无需检查。' 'Not run. Not needed for the current state.'
         BootmgfwSignatureStatus = 'NotNeeded'
         BootmgfwSignatureMessage = $message
-        CsmOptionRomStatus = L '未执行；当前状态无需检查。' 'Not run; not needed for the current state.'
+        CsmOptionRomStatus = L '未执行。当前状态无需检查。' 'Not run. Not needed for the current state.'
         OfficialRotationEventSummary = ''
         DeepDiagnosticsMessage = $message
         ManualActionMessage = L '无需处理。' 'No action needed.'
@@ -1158,15 +1158,15 @@ function Get-BootChainState {
     $referenceSig = Get-ReferenceBootmgfwSignatureState
     $result.BootmgfwSignatureStatus = $referenceSig.Status
     $result.BootmgfwSignatureMessage = $referenceSig.Message
-    $result.EfiPartitionScanStatus = L '未自动挂载EFI分区；如仍红屏，需要人工检查EFI分区中的实际启动文件。' 'The EFI partition was not mounted automatically; if the violation persists, manually inspect the actual boot files on the EFI partition.'
-    $result.CsmOptionRomStatus = L 'Windows中无法可靠判断CSM/Option ROM；如仍红屏，请在BIOS中确认CSM关闭并检查外设/Option ROM。' 'CSM/Option ROM cannot be reliably determined from Windows; if the violation persists, check BIOS CSM, external devices, and Option ROM settings.'
+    $result.EfiPartitionScanStatus = L '未自动挂载EFI分区。如仍红屏，需要检查EFI分区中的实际启动文件。' 'The EFI partition was not mounted automatically. If the violation persists, check the actual boot files on the EFI partition.'
+    $result.CsmOptionRomStatus = L 'Windows中无法可靠判断CSM/Option ROM。如仍红屏，请在BIOS中确认CSM关闭，并检查外设和Option ROM。' 'CSM/Option ROM cannot be reliably determined from Windows. If the violation persists, check BIOS CSM, external devices, and Option ROM settings.'
 
     if (-not $fw.Succeeded -or -not $bootmgr.Succeeded) {
         $result.NeedsManualReview = $true
-        $result.Message = L '无法读取Windows固件启动项；启用Secure Boot前需要人工确认当前启动项。' 'Unable to read Windows firmware boot entries; the current boot entry must be checked manually before enabling Secure Boot.'
+        $result.Message = L '无法读取Windows固件启动项。启用Secure Boot前需要先确认当前启动项。' 'Unable to read Windows firmware boot entries. Check the current boot entry before enabling Secure Boot.'
         $result.DeepDiagnosticsMessage = $result.Message
         $result.ManualActionMessage = L '处理建议：不要继续清Keys或Restore Factory Keys。请先用Windows启动修复、bcdboot或BIOS启动菜单确认Windows Boot Manager可正常启动，完成后回到本软件重新检测。' 'Action: Do not clear Keys or use Restore Factory Keys. Use Windows startup repair, bcdboot, or the BIOS boot menu to confirm that Windows Boot Manager can boot normally, then return to this assistant and detect again.'
-        $result.ManualReviewWorkflow = L '用户流程：先处理启动项或启动介质问题；完成后回到本软件点击「重新检测」；只有重新检测显示启动链通过后，才进入BIOS启用Secure Boot。' 'User flow: fix the boot entry or boot-media issue first; return to this assistant and click Detect again; enable Secure Boot in BIOS only after the detected boot-chain state is safe.'
+        $result.ManualReviewWorkflow = L '先处理启动项或启动介质问题。完成后回到本软件点击「重新检测」。重新检测显示启动链通过后，再进入BIOS启用Secure Boot。' 'Fix the boot entry or boot-media issue first. Return to this assistant and click Detect again. Enable Secure Boot in BIOS only after the detected boot-chain state is safe.'
         $result.RiskDisposition = L '阻断：无法读取固件启动项' 'Blocked: firmware boot entries cannot be read'
         return [pscustomobject]$result
     }
@@ -1206,7 +1206,7 @@ function Get-BootChainState {
     $allSuspicious = @()
     if (-not [string]::IsNullOrWhiteSpace([string]$result.ThirdPartyEfiIndicators)) { $allSuspicious += $result.ThirdPartyEfiIndicators }
     if (-not [string]::IsNullOrWhiteSpace([string]$result.ExternalBootIndicators)) { $allSuspicious += $result.ExternalBootIndicators }
-    $result.SuspiciousFirmwareEntries = ($allSuspicious -join '; ')
+    $result.SuspiciousFirmwareEntries = ($allSuspicious -join ', ')
 
     $eventCount = 0
     try { if ($null -ne $script:ServicingState -and $null -ne $script:ServicingState.Events) { $eventCount = @($script:ServicingState.Events).Count } } catch { $eventCount = 0 }
@@ -1239,13 +1239,13 @@ function Get-BootChainState {
     }
     if ($thirdPartyDetected) {
         $deepParts += ((L '检测到第三方EFI/启动器线索：{0}。' 'Third-party EFI/bootloader indicators detected: {0}.') -f $result.ThirdPartyEfiIndicators)
-        $manualParts += L '第三方EFI/启动器：软件不会删除或改写这些启动器。请确认是否存在双系统、ventoy/grub/rEFInd/OpenCore/自定义引导；需要Windows启用Secure Boot时，应先让BIOS首启动项指向Windows Boot Manager，或按你的双系统方案自行配置受信任启动链。' 'Third-party EFI/bootloader: this assistant will not delete or rewrite these entries. Check for dual boot, ventoy/grub/rEFInd/OpenCore, or custom loaders. To enable Secure Boot for Windows, make Windows Boot Manager the first BIOS boot entry, or configure a trusted boot chain according to your dual-boot setup.'
+        $manualParts += L '第三方EFI/启动器：软件不会删除或改写这些启动器。请确认是否存在双系统、Ventoy、grub、rEFInd、OpenCore或自定义引导。需要为Windows启用Secure Boot时，应先让BIOS首启动项指向Windows Boot Manager，或按你的双系统方案配置受信任启动链。' 'Third-party EFI/bootloader: this assistant will not delete or rewrite these entries. Check for dual boot, ventoy/grub/rEFInd/OpenCore, or custom loaders. To enable Secure Boot for Windows, make Windows Boot Manager the first BIOS boot entry, or configure a trusted boot chain according to your dual-boot setup.'
     }
     if ($externalDetected) {
         $deepParts += ((L '检测到外接/可移动/网络启动线索：{0}。' 'External/removable/network boot indicators detected: {0}.') -f $result.ExternalBootIndicators)
         $manualParts += L '外接/可移动/网络启动：软件不会删除这些启动项。请先拔掉无关U盘、移动硬盘、扩展坞启动介质，必要时在BIOS中降低USB/PXE/Removable启动优先级，然后重新检测。' 'External/removable/network boot: this assistant will not delete these boot entries. Disconnect irrelevant USB drives, external disks, docks or boot media, lower USB/PXE/removable priority in BIOS if needed, then detect again.'
     }
-    if ($deepParts.Count -eq 0) { $deepParts += L '未发现第三方EFI或外接启动项的明显线索；仍未自动挂载EFI分区。' 'No obvious third-party EFI or external boot indicators were found; the EFI partition was still not automatically mounted.' }
+    if ($deepParts.Count -eq 0) { $deepParts += L '未发现第三方EFI或外接启动项的明显线索。仍未自动挂载EFI分区。' 'No obvious third-party EFI or external boot indicators were found. The EFI partition was still not automatically mounted.' }
     if ($manualParts.Count -eq 0) {
         if ($result.RepairAvailable) {
             $manualParts += L '处理建议：可以让软件修复 Windows Boot Manager 路径和固件首启动项。修复后必须点击重新检测，状态正常后再进 BIOS 启用 Secure Boot。' 'Action: the assistant can repair the Windows Boot Manager path and first firmware boot entry. Detect again after repair, and enable Secure Boot in BIOS only after the state is normal.'
@@ -1257,14 +1257,14 @@ function Get-BootChainState {
     }
     $result.DeepDiagnosticsMessage = ($deepParts -join ' ')
     $result.ManualActionMessage = ($manualParts -join ' ')
-    $result.ManualReviewWorkflow = L '先看「启动链处理结果」。如果显示可以修复，只点击主按钮修复 Windows Boot Manager，完成后点击「重新检测」。如果显示需要先排查，不要清 Keys 或 Restore Factory Keys，先按「启动链处理建议」处理第三方 EFI、外接启动、签名、CSM/Option ROM 或启动文件问题。重新检测通过后，再进入 BIOS 启用 Secure Boot。' 'Read the boot-chain result first. If the result is repairable, use only the main button to repair Windows Boot Manager, then click Detect again. If the result is blocked, do not clear Keys or use Restore Factory Keys; follow Boot-chain action for third-party EFI, external boot, signature, CSM/Option ROM, or boot-file issues first. Enable Secure Boot in BIOS only after detection passes.'
+    $result.ManualReviewWorkflow = L '先看「启动链处理结果」。如果显示可以修复，只点击主按钮修复 Windows Boot Manager，完成后点击「重新检测」。如果显示需要先排查，不要清 Keys 或 Restore Factory Keys，先按「启动链处理建议」处理第三方 EFI、外接启动、签名、CSM/Option ROM 或启动文件问题。重新检测通过后，再进入 BIOS 启用 Secure Boot。' 'Read the boot-chain result first. If the result is repairable, use only the main button to repair Windows Boot Manager, then click Detect again. If the result is blocked, do not clear Keys or use Restore Factory Keys. Follow Boot-chain action for third-party EFI, external boot, signature, CSM/Option ROM, or boot-file issues first. Enable Secure Boot in BIOS only after detection passes.'
 
     if ($result.IsSafeToEnableSecureBoot) {
         $result.RiskDisposition = L '通过：可进入BIOS启用Secure Boot' 'Passed: Secure Boot can be enabled in BIOS'
         $result.Message = L 'Windows Boot Manager已位于固件启动顺序首位，路径指向标准Windows启动文件，且未发现明显第三方/外接启动链风险。' 'Windows Boot Manager is first in firmware boot order, points to the standard Windows boot file, and no obvious third-party or external boot-chain risk was detected.'
     } elseif ($result.NeedsManualReview) {
         $result.RiskDisposition = L '阻断：存在非自动修复的启动链风险' 'Blocked: boot-chain risk is not automatically repairable'
-        $result.Message = L '启动链存在需要先排查的风险；不要直接启用 Secure Boot 或继续清 Keys。请先检查 EFI 启动文件、第三方启动器、外接启动项或 CSM/Option ROM。' 'The boot chain contains items that need checking first. Do not directly enable Secure Boot or clear Keys. Check EFI boot files, third-party bootloaders, external boot entries, or CSM/Option ROM first.'
+        $result.Message = L '启动链存在需要先检查的项目。不要直接启用 Secure Boot，也不要继续清 Keys。请先检查 EFI 启动文件、第三方启动器、外接启动项或 CSM/Option ROM。' 'The boot chain contains items that need checking first. Do not directly enable Secure Boot or clear Keys. Check EFI boot files, third-party bootloaders, external boot entries, or CSM/Option ROM first.'
     } elseif ($result.RepairAvailable) {
         $result.RiskDisposition = L '可修复：仅限Windows Boot Manager路径/首启动项' 'Repairable: Windows Boot Manager path/first boot entry only'
         $result.Message = L '检测到Windows Boot Manager，但它不是固件启动顺序首位，或启动路径不是标准Windows启动文件。请先修复启动顺序，再启用Secure Boot。' 'Windows Boot Manager was detected, but it is not first in firmware boot order or its path is not the standard Windows boot file. Repair the boot order before enabling Secure Boot.'
@@ -1363,7 +1363,7 @@ function Test-TransactionIntermediateState {
         }
         if ($db -and $dbx -and $kek -and $pk) {
             $valid = ($State.Variables.db.Sha256 -eq $hashes.DbWith2023) -and ($State.Variables.dbx.Sha256 -eq $hashes.DbxDefault) -and ($State.Variables.KEK.Sha256 -eq $hashes.KekDefault) -and ($State.Variables.PK.Sha256 -eq $hashes.PkDefault)
-            return [pscustomobject]@{ IsConsistent = $valid; RecognizedStage = 'PkWritten'; Message = if ($valid) { L '识别为 PK 写入后的可继续状态。' 'Recognized as a resumable state after PK was written.' } else { L 'active Keys 与上次记录不一致。' 'The active keys do not match the saved record.' } }
+            return [pscustomobject]@{ IsConsistent = $valid; RecognizedStage = 'PkWritten'; Message = if ($valid) { L '识别为 PK 写入后的可继续状态。' 'Recognized as a resumable state after PK was written.' } else { L 'Active Keys 与上次记录不一致。' 'The Active Keys do not match the saved record.' } }
         }
     } catch {
         return [pscustomobject]@{ IsConsistent = $false; RecognizedStage = ''; Message = $_.Exception.Message }
@@ -1561,7 +1561,7 @@ function Get-SystemState {
 
     if (-not $isUefi) {
         $state.Classification = 'UnsupportedLegacy'
-        $state.NextStep = L '必须先转换为UEFI启动；本工具不会执行磁盘转换。' 'Convert the system to UEFI boot first. This assistant does not convert disks.'
+        $state.NextStep = L '必须先转换为UEFI启动。本工具不会执行磁盘转换。' 'Convert the system to UEFI boot first. This assistant does not convert disks.'
         $state.BlockReason = L '当前不是UEFI启动。' 'The current Windows installation is not booted in UEFI mode.'
     } elseif (-not $isAsus) {
         $state.Classification = 'ReadOnlyNonAsus'
@@ -1573,7 +1573,7 @@ function Get-SystemState {
         $state.BlockReason = L '固件变量读取出现非「变量不存在」错误，或Secure Boot确认命令失败。' 'A firmware-variable read returned an error other than variable-not-found, or Secure Boot confirmation failed.'
     } elseif ($pkRebootPending) {
         $state.Classification = 'PkWrittenPendingReboot'
-        $state.NextStep = L 'PK已写入并通过回读；必须重启后再进入官方轮换。' 'PK was written and verified. Restart before starting the official rotation.'
+        $state.NextStep = L 'PK已写入并通过回读。必须重启后再进入官方轮换。' 'PK was written and verified. Restart before starting the official rotation.'
     } elseif ($null -ne $script:CurrentTransaction -and [string]$script:CurrentTransaction.Status -eq 'Locked' -and -not $postPkActiveStateVerified) {
         $state.Classification = 'BlockedUnsafe'
         $state.NextStep = L '上次进度已锁定。可导出日志，或进入中断恢复并重新校验备份。' 'Saved progress is locked. Export diagnostics, or use interrupted recovery and check the backups again.'
@@ -1587,11 +1587,11 @@ function Get-SystemState {
         $state.BlockReason = $state.TransactionConsistency.Message
     } elseif ($setupMode -eq 1 -and $secureBootVariable -eq 0 -and $noKeys -and -not $defaultVariablesReadable) {
         $state.Classification = 'FirmwareVariableReadFailure'
-        $state.NextStep = L 'Default变量出现非「变量不存在」的读取错误，禁止自动修复并导出日志。' 'A Default variable returned a read error other than variable-not-found. Automated repair is blocked; export diagnostics.'
-        $state.BlockReason = L '至少一个Default变量无法可靠读取。' 'At least one Default variable could not be read reliably.'
+        $state.NextStep = L 'BIOS默认Keys读取异常，禁止自动修复并导出日志。' 'BIOS factory Keys returned an unexpected read error. Automated repair is blocked. Export diagnostics.'
+        $state.BlockReason = L '至少一个BIOS默认Keys无法可靠读取。' 'At least one BIOS factory Key could not be read reliably.'
     } elseif ($setupMode -eq 1 -and $secureBootVariable -eq 0 -and $noKeys -and -not $defaultsAll) {
         $state.Classification = 'MissingDefaultVariables'
-        $state.NextStep = L '活动Keys已清空，但Default变量不完整；禁止自动修复。' 'Active keys are empty, but the Default variables are incomplete. Automated repair is blocked.'
+        $state.NextStep = L 'Active Keys 已清空，但 BIOS 默认 Keys 有缺失或为空。已禁止自动修复。' 'Active Keys are empty, but BIOS factory Keys are missing or empty. Automated repair is blocked.'
         $state.BlockReason = L 'PKDefault/KEKDefault/dbDefault/dbxDefault至少一项不存在或为空。' 'At least one of PKDefault/KEKDefault/dbDefault/dbxDefault is missing or empty.'
     } elseif ($setupMode -eq 1 -and $secureBootVariable -eq 0 -and $noKeys -and $defaultsAll) {
         $state.Classification = 'ReadyForRepair'
@@ -1613,16 +1613,16 @@ function Get-SystemState {
             if (-not $state.WriteAllowed) { $state.BlockReason = $writeGate.Reason }
         } else {
             $state.Classification = 'AdvancedRecoveryRequired'
-            $state.NextStep = L '当前存在部分 active Keys，但没有可验证的上次进度。请导入恢复文件，或选择四个 Default Keys 备份和官方证书进行中断恢复校验。' 'Partial active keys exist without verified saved progress. Import a recovery file, or select all four Default Keys backups and the official certificate for interrupted recovery.'
+            $state.NextStep = L '当前存在部分 Active Keys，但没有可验证的上次进度。请导入恢复文件，或选择四个 Default Keys 备份和官方证书进行中断恢复校验。' 'Partial Active Keys exist without verified saved progress. Import a recovery file, or select all four Default Keys backups and the official certificate for interrupted recovery.'
             $state.BlockReason = L '在中断恢复校验完成前，任何 UEFI 写入均被禁止。' 'All UEFI writes are blocked until interrupted recovery is fully checked.'
         }
     } elseif ($confirm -and $setupMode -eq 0 -and $servicing.UEFICA2023Error -and $servicing.UEFICA2023Error -ne '0x00000000') {
         $state.Classification = 'OfficialRotationError'
-        $state.NextStep = L '官方轮换记录了错误，禁止继续写入；请导出日志检查分析。' 'The official rotation recorded an error. Further writes are blocked; export diagnostics for checking.'
+        $state.NextStep = L '官方轮换记录了错误，禁止继续写入。请导出日志检查。' 'The official rotation recorded an error. Further writes are blocked. Export diagnostics for checking.'
         $state.BlockReason = ('UEFICA2023Error={0}，ErrorEvent={1}' -f $servicing.UEFICA2023Error, $servicing.UEFICA2023ErrorEvent)
     } elseif ($confirm -and $setupMode -eq 0 -and $servicing.UEFICA2023Status -eq 'Updated' -and -not $rotationVerification.IsComplete) {
         $state.Classification = 'UpdatedButVerificationMismatch'
-        $state.NextStep = L 'Windows报告Updated，但证书集合与本机适用性检测不一致；禁止手工补写并导出日志。' 'Windows reports Updated, but the detected certificate set does not match device applicability. Do not add certificates manually; export diagnostics.'
+        $state.NextStep = L 'Windows报告Updated，但证书集合与本机适用性检测不一致。禁止手工补写，请导出日志。' 'Windows reports Updated, but the detected certificate set does not match device applicability. Do not add certificates manually. Export diagnostics.'
         $state.BlockReason = $rotationVerification.Message
     } elseif ($confirm -and $setupMode -eq 0 -and ($servicing.UEFICA2023Status -eq 'InProgress' -or ($servicing.AvailableUpdates -ne 0 -and $servicing.AvailableUpdates -ne $script:AvailableUpdatesComplete))) {
         $state.Classification = 'OfficialRotationNeedsReboot'
@@ -1637,11 +1637,11 @@ function Get-SystemState {
         if ($activeNew -and (-not $state.BootChain.IsSafeToEnableSecureBoot)) {
             if ($state.BootChain.RepairAvailable) {
                 $state.Classification = 'BootChainRepairRequired'
-                $state.NextStep = L '当前active Keys已包含2023证书，但Secure Boot未启用。先将Windows Boot Manager修复为首启动项，再启用Secure Boot。' 'The active Keys already contain 2023 certificates, but Secure Boot is disabled. Repair Windows Boot Manager as the first boot entry before enabling Secure Boot.'
+                $state.NextStep = L '当前 Active Keys 已包含 2023 证书，但 Secure Boot 未启用。先将 Windows Boot Manager 修复为首启动项，再启用 Secure Boot。' 'Active Keys already contain 2023 certificates, but Secure Boot is disabled. Repair Windows Boot Manager as the first boot entry before enabling Secure Boot.'
                 $state.BootChainWarning = $state.BootChain.Message
             } else {
                 $state.Classification = 'BootChainReviewRequired'
-                $state.NextStep = L '当前active Keys已包含2023证书，但启动链未通过。请按启动链处理建议排查，完成后点击「重新检测」；状态正常后再启用Secure Boot，不要继续清Keys。' 'The active Keys already contain 2023 certificates, but the boot chain did not pass. Follow the boot-chain action, click Detect again after fixing it, and enable Secure Boot only after the state is normal. Do not clear the Keys.'
+                $state.NextStep = L '当前 Active Keys 已包含 2023 证书，但启动链未通过。请按启动链处理建议检查，完成后点击「重新检测」。状态正常后再启用 Secure Boot，不要继续清 Keys。' 'Active Keys already contain 2023 certificates, but the boot chain did not pass. Follow the boot-chain action, click Detect again after fixing it, and enable Secure Boot only after the state is normal. Do not clear the Keys.'
                 $state.ActionBlockReason = $state.BootChain.Message
                 $state.BootChainWarning = $state.BootChain.Message
             }
@@ -1655,10 +1655,10 @@ function Get-SystemState {
     } elseif ($setupMode -eq 1 -and -not $noKeys) {
         $state.Classification = 'InvalidSetupModeState'
         $state.NextStep = L '存在异常的Setup Mode/部分Keys组合，禁止自动修复。' 'An abnormal Setup Mode/partial-key combination exists. Automated repair is blocked.'
-        $state.BlockReason = L 'SetupMode=1但活动密钥并非全部缺失。' 'SetupMode=1, but the active keys are not all absent.'
+        $state.BlockReason = L 'SetupMode=1但活动密钥并非全部缺失。' 'SetupMode=1, but the Active Keys are not all absent.'
     } else {
         $state.Classification = 'NeedsFirmwareSetup'
-        $state.NextStep = L '重启进入BIOS，按ASUS教程进入Setup Mode并清除活动Keys。' 'Restart into UEFI setup, follow the ASUS instructions to enter Setup Mode, and clear the active keys.'
+        $state.NextStep = L '重启进入BIOS，按ASUS教程进入Setup Mode并清除活动Keys。' 'Restart into UEFI setup, follow the ASUS instructions to enter Setup Mode, and clear the Active Keys.'
         $state.BlockReason = L '尚未满足SetupMode=1且No Key。' 'The required SetupMode=1 and No Key state has not been reached.'
     }
 
@@ -1680,7 +1680,7 @@ function Get-SystemState {
         $state.DefaultResetRisk = L '无法完整读取主板BIOS固件预置的Default Keys。不要使用Clear Keys、Reset To Setup Mode或Restore Factory Keys。' 'The Default Keys stored in the motherboard BIOS firmware could not be read completely. Do not use Clear Keys, Reset To Setup Mode, or Restore Factory Keys.'
     } elseif ($activeNew -and $defaultMissing) {
         $state.DefaultResetRiskLevel = 'Warning'
-        $state.DefaultResetRisk = L 'active Keys 已有 2023 证书，但 BIOS 里的 Default Keys 不完整。不要使用 Restore Factory Keys。' 'Active Keys already contain 2023 certificates, but BIOS Default Keys are incomplete. Do not use Restore Factory Keys.'
+        $state.DefaultResetRisk = L 'Active Keys 已有 2023 证书，但 BIOS 固件预置的 Default Keys 不包含完整 2023 证书。不要使用 Restore Factory Keys。' 'Active Keys already contain 2023 certificates, but BIOS factory Default Keys do not contain the full 2023 certificate set. Do not use Restore Factory Keys.'
     } elseif ($activeNew) {
         $state.DefaultResetRiskLevel = 'Low'
         $state.DefaultResetRisk = L '检测到主板BIOS固件预置的Default Keys中已经包含本次2023更新所需的证书条目。当前无需使用Restore Factory Keys，也不建议在没有明确需要时重置Keys。' 'The Default Keys stored in the motherboard BIOS firmware already contain the certificate entries required for the 2023 update. Restore Factory Keys is not needed, and Keys should not be reset without a specific reason.'
@@ -1775,37 +1775,31 @@ function Get-Settings {
 function Get-OobeRiskText {
     if ($script:Language -eq 'en-US') {
         return @'
-[Before you begin]
-This tool is for ASUS/ROG Windows 10/11 devices using UEFI boot. It checks the device, Secure Boot state, Keys, BitLocker/device encryption, Windows Boot Manager, and the Microsoft 2023 certificate before any write is allowed.
+[Before you start]
+Back up important files. Handle BitLocker / device encryption first and keep the recovery key. If the app asks for Setup Mode, enter BIOS and clear Secure Boot Keys. Do not use Restore Factory Keys unless you know why. Some BIOS factory Keys do not include the full 2023 certificate set.
 
-[Risk]
-PK, KEK, db, and dbx are UEFI firmware variables. Do not disconnect power, force shutdown, update BIOS, or run another Secure Boot tool during a write. If Windows cannot boot, this tool cannot reopen by itself.
+[During use]
+Follow the next step shown by the app. Each write asks for confirmation again.
+After a restart, the app only checks the state again.
 
-[What it will not do]
-The tool writes one step at a time and asks again before every write. After a restart, it only opens and detects again. It will not clear Keys, restore Factory Keys, delete third-party EFI files, or change dual-boot/PE/Ventoy/PXE entries.
-
-[Before enabling Secure Boot]
-If active Keys already contain 2023 certificates but Secure Boot is still off, the tool first checks Windows Boot Manager, boot order, third-party EFI entries, external/network boot entries, and the reference bootmgfw.efi signature. Enable Secure Boot in BIOS only after this check passes.
-
-[BitLocker and files]
-UEFI writes are allowed only when the system drive is detected as fully decrypted. MD5 is shown only for identification and is not used for trust. Logs and backups stay on this PC unless you export them. Do not publish raw Default Keys backups, BitLocker recovery keys, personal files, or recovery files that contain device backups.
+[Files]
+Choose where logs and backups are saved. They stay on this PC unless you export them.
+Do not publish raw Default Keys backups, BitLocker recovery keys, personal files, or recovery files that contain device backups.
 '@
     }
     return @'
 【开始前】
-本工具面向 UEFI 启动的 ASUS/ROG Windows 10/11 设备。软件会先检查设备、Secure Boot 状态、Keys、BitLocker/设备加密、Windows Boot Manager 和微软 2023 证书，条件不完整时不开放写入。
+先备份重要文件。处理 BitLocker / 设备加密，并保存恢复密钥。
+软件提示需要 Setup Mode 时，再进 BIOS 清空 Secure Boot Keys。
+不要随意使用 Restore Factory Keys。部分 BIOS 默认 Keys 不包含完整 2023 证书，恢复后可能回到旧证书。
 
-【风险】
-PK、KEK、db、dbx 是 UEFI 固件变量。写入期间不要断电、强制关机、更新 BIOS，或同时运行其他 Secure Boot 工具。如果 Windows 进不去，软件无法自己重新打开。
+【使用中】
+按主界面显示的下一步操作。每次写入都会再次确认。
+重启后只重新检测状态，不会自动执行新的写入。
 
-【软件不会做的事】
-软件每次只写一步，每次写入前都会再次确认。重启后只会自动打开并重新检测，不会自动执行新的固件写入。它不会清 Keys，不会恢复 Factory Keys，也不会删除双系统、PE、Ventoy、PXE 或第三方 EFI 启动项。
-
-【启用 Secure Boot 前】
-如果 active Keys 已有 2023 证书，但 Secure Boot 仍关闭，软件会先检查 Windows Boot Manager、启动顺序、第三方 EFI、外接/网络启动项和 bootmgfw.efi 参考签名。确认通过后，再进 BIOS 启用 Secure Boot。
-
-【BitLocker 和文件】
-只有明确检测到系统盘已完全解密时，才允许 UEFI 写入。MD5 只用于识别，安全判定不依赖MD5。日志和备份只保存在本机，除非你自己导出。不要公开上传 Default Keys 原始备份、BitLocker 恢复密钥、个人文件，或包含设备备份的恢复文件。
+【文件】
+选择日志和备份保存位置。文件只保存在本机，除非你自己导出。
+不要公开上传 Default Keys 原始备份、BitLocker 恢复密钥、个人文件，或包含设备备份的恢复文件。
 '@
 }
 
@@ -1816,7 +1810,7 @@ function Get-FileCreationPlanText {
         return @"
 Files and folders created only after you click Start detection:
 • Selected location: $displayPath
-  Logs\ — session diagnostics; Progress\ — created only when a repair starts.
+  Logs\ — session diagnostics. Progress\ — created only when a repair starts.
 • Program data folder: $script:AppDataRoot
   Settings, restart/resume state, certificate copy, and temporary import/export staging. Temporary staging is removed after use. This folder is not created before OOBE confirmation.
 Nothing is uploaded automatically. Export ZIP files are created only after you choose a destination in a Save dialog.
@@ -1825,10 +1819,10 @@ Nothing is uploaded automatically. Export ZIP files are created only after you c
     return @"
 仅在你点击「开始检测」后才会创建以下文件或文件夹：
 • 用户选择的位置：$displayPath
-  Logs\：本次诊断日志；Progress\：仅在开始修复时创建。
+  Logs\：本次诊断日志。Progress\：仅在开始修复时创建。
 • 程序数据目录：$script:AppDataRoot
   保存设置、重启续跑状态、证书副本，以及明确操作时使用的临时导入/导出目录。临时目录使用后会删除，确认 OOBE 前不会创建。
-软件不会自动上传任何文件；所有导出ZIP仅在你通过「另存为」明确选择位置后生成。
+软件不会自动上传任何文件。所有导出ZIP仅在你通过「另存为」明确选择位置后生成。
 "@
 }
 
@@ -1984,7 +1978,7 @@ function Show-Oobe {
         $form.Text = L "$script:AppName - 首次使用" "$script:AppName - First Run"
         $title.Text = L '首次使用设置' 'First-run setup'
         $languageLabel.Text = L '语言：' 'Language:'
-        $subtitle.Text = L '请选择语言，读完安全说明，并选择软件保存文件的位置。任何固件写入都要再次确认。' 'Choose a language, read the notice, and select where files may be stored. Every firmware write asks again.'
+        $subtitle.Text = L '请选择语言，阅读说明，并选择日志和备份保存位置。' 'Choose a language, read the notice, and choose where logs and backups are saved.'
         $risk.Text = Get-OobeRiskText
         $risk.SelectionStart = 0
         $risk.ScrollToCaret()
@@ -1992,10 +1986,10 @@ function Show-Oobe {
         $backupLabel.Text = L '文件保存位置：' 'Storage folder:'
         $browse.Text = L '选择文件夹…' 'Choose folder...'
         $filePlan.Text = Get-FileCreationPlanText -BackupPath $backupText.Text
-        $check1.Text = L '我理解软件会读取 Secure Boot 变量，并只在我确认后写入。' 'I understand the tool reads Secure Boot variables and writes only after I confirm.'
-        $check2.Text = L '我理解重启续跑只会重新检测，新的写入仍要再次确认。' 'I understand restart resume only detects again; any new write asks again.'
-        $check3.Text = L '我已保存当前工作；如果出现异常，我会停止操作并导出日志。' 'I saved my work; if anything looks wrong, I will stop and export logs.'
-        $check4.Text = L '我已查看上方文件清单，并同意在所选位置创建这些内容。' 'I reviewed the file list above and agree to create those items in the shown locations.'
+        $check1.Text = L '我理解软件会读取 Secure Boot 变量，写入前会再次确认。' 'I understand the app reads Secure Boot variables and asks again before writing.'
+        $check2.Text = L '我理解重启后只会重新检测，不会自动继续写入。' 'I understand that after restart the app only detects again and does not continue writing automatically.'
+        $check3.Text = L '我已保存当前工作，必要时会停止操作并导出日志。' 'I saved my work and will stop and export logs if needed.'
+        $check4.Text = L '我已查看文件清单，并同意在所选位置创建这些内容。' 'I reviewed the file list and agree to create these items in the selected location.'
         $exit.Text = L '退出软件' 'Exit'
         $folderDialog.Description = L '选择备份、恢复校验和日志目录' 'Select the backup, recovery check, and log folder'
         $form.Font = New-Object Drawing.Font((Get-LocalizedFontName), 9)
@@ -2031,7 +2025,7 @@ function Show-Oobe {
             $status.Text = L '请确认全部四项，包括文件创建清单。' 'Confirm all four items, including the file-creation list.'
         } else {
             $continue.Text = L '开始检测' 'Start detection'
-            $status.Text = L '前置确认已完成；点击后才会创建所列文件夹和日志。' 'Prerequisites confirmed. Listed folders and logs are created only after you click.'
+            $status.Text = L '前置确认已完成。点击后才会创建所列文件夹和日志。' 'Prerequisites confirmed. Listed folders and logs are created only after you click.'
             $status.ForeColor = [Drawing.Color]::DarkGreen
         }
     }
@@ -2077,7 +2071,7 @@ function Get-RecoveryStageFromEvidence {
     $dbx = $State.Variables.dbx.Exists
 
     if (-not $pk -and -not $kek -and -not $db -and -not $dbx) {
-        return [pscustomobject]@{ IsValid = $true; Stage = 'NoKeysReady'; Message = L '识别为无活动Keys的干净起点。' 'Recognized as a clean starting point with no active keys.' }
+        return [pscustomobject]@{ IsValid = $true; Stage = 'NoKeysReady'; Message = L '识别为无活动Keys的干净起点。' 'Recognized as a clean starting point with no Active Keys.' }
     }
     if ($db -and -not $dbx -and -not $kek -and -not $pk) {
         if ($State.Variables.db.Sha256 -eq [string]$ExpectedHashes.DbDefault) {
@@ -2102,9 +2096,9 @@ function Get-RecoveryStageFromEvidence {
     }
     if ($db -and $dbx -and $kek -and $pk) {
         $valid = $State.Variables.db.Sha256 -eq [string]$ExpectedHashes.DbWith2023 -and $State.Variables.dbx.Sha256 -eq [string]$ExpectedHashes.DbxDefault -and $State.Variables.KEK.Sha256 -eq [string]$ExpectedHashes.KekDefault -and $State.Variables.PK.Sha256 -eq [string]$ExpectedHashes.PkDefault
-        return [pscustomobject]@{ IsValid = $valid; Stage = if ($valid) { 'PkWritten' } else { '' }; Message = if ($valid) { L '完整活动Keys精确匹配PK写入后的合法检查点。' 'All active keys exactly match the valid post-PK checkpoint.' } else { L '完整 active Keys 与恢复校验不一致。' 'The complete active keys do not match the recovery check.' } }
+        return [pscustomobject]@{ IsValid = $valid; Stage = if ($valid) { 'PkWritten' } else { '' }; Message = if ($valid) { L '完整活动Keys精确匹配PK写入后的合法检查点。' 'All Active Keys exactly match the valid post-PK checkpoint.' } else { L '完整 Active Keys 与恢复校验不一致。' 'The complete Active Keys do not match the recovery check.' } }
     }
-    return [pscustomobject]@{ IsValid = $false; Stage = ''; Message = L '当前 active Key 组合不在可继续范围内。' 'The current active-key combination is not in a resumable state.' }
+    return [pscustomobject]@{ IsValid = $false; Stage = ''; Message = L '当前 Active Key 组合不在可继续范围内。' 'The current active-key combination is not in a resumable state.' }
 }
 
 function Confirm-AdvancedRecoveryWarning {
@@ -2132,7 +2126,7 @@ ADVANCED RECOVERY — HIGH RISK
 Detected checkpoint: $Stage
 Check result: $Message
 
-This path is used because the earlier progress record is missing, locked, or unavailable. The tool has compared the selected Default Key backups, the current firmware Default variables, the official Microsoft certificate, and the real active UEFI-variable hashes. It will create a new progress record, but it cannot prove who performed the earlier writes.
+This path is used because the earlier progress record is missing, locked, or unavailable. The tool has compared the selected Default Key backups, the current BIOS factory Keys, the official Microsoft certificate, and the real active UEFI-variable hashes. It will create a new progress record, but it cannot prove who performed the earlier writes.
 
 Continuing does not immediately write firmware. It only rebuilds the saved progress and unlocks one verified next step. Before every later write, all UEFI state, hashes, power, BitLocker, and pending-restart conditions are checked again.
 
@@ -2145,7 +2139,7 @@ Type I UNDERSTAND below to continue.
 识别检查点：$Stage
 校验结果：$Message
 
-由于此前的进度记录缺失、已锁定或不可用，本路径会使用你选择的 Default Keys 备份、当前固件 Default 变量、微软官方证书以及真实 active UEFI 变量哈希进行校验。软件可以确认当前内容与可继续检查点一致，但无法证明此前由谁执行了写入。
+由于此前的进度记录缺失、已锁定或不可用，本路径会使用你选择的 Default Keys 备份、当前 BIOS 默认 Keys、微软官方证书以及真实 Active UEFI 变量哈希进行校验。软件可以确认当前内容与可继续检查点一致，但无法证明此前由谁执行了写入。
 
 继续不会立即写入固件，只会重建进度记录并解锁一个已经验证的下一步骤。此后的每一次写入前，软件仍会重新检查 UEFI 状态、哈希、电源、BitLocker 和 Windows 待重启状态。
 
@@ -2189,7 +2183,7 @@ function New-AdvancedRecoveryTransaction {
     )
     $state = Get-SystemState
     if (-not $state.IsAsus -or -not $state.IsUEFI) { throw (L '高级恢复只允许在ASUS/ROG且当前以UEFI启动的设备上运行。' 'Interruption recovery is permitted only on ASUS/ROG devices currently booted in UEFI mode.') }
-    if (-not $state.ActiveVariablesReadable -or -not $state.DefaultVariablesReadable -or -not $state.DefaultsAllReadable) { throw (L '活动变量或Default变量无法完整读取，禁止中断恢复。' 'Active or Default variables cannot be read completely; interruption recovery is blocked.') }
+    if (-not $state.ActiveVariablesReadable -or -not $state.DefaultVariablesReadable -or -not $state.DefaultsAllReadable) { throw (L '活动Keys或BIOS默认Keys无法完整读取，禁止中断恢复。' 'Active Keys or BIOS factory Keys cannot be read completely. Interruption recovery is blocked.') }
     if ($state.SetupMode -ne 1 -and -not $state.AllKeys) { throw (L '当前不是可验证的Setup Mode中间态。' 'The current state is not a verifiable Setup Mode intermediate state.') }
 
     $nameMap = [ordered]@{ PKDefault='PkDefault'; KEKDefault='KekDefault'; dbDefault='DbDefault'; dbxDefault='DbxDefault' }
@@ -2204,14 +2198,14 @@ function New-AdvancedRecoveryTransaction {
         $hash = Get-ByteHashHex -Bytes $bytes -Algorithm SHA256
         $firmware = $state.Variables[$name]
         if ($bytes.Length -ne $firmware.Length -or $hash -ne $firmware.Sha256 -or -not (Test-ByteArrayEqual -A $bytes -B ([byte[]]$firmware.Bytes))) {
-            throw ((L '{0}备份与当前固件Default变量不完全一致。' 'The {0} backup does not exactly match the current firmware Default variable.') -f $name)
+            throw ((L '{0}备份与当前BIOS默认Keys不完全一致。' 'The {0} backup does not exactly match the current BIOS factory Key.') -f $name)
         }
         $expected[$nameMap[$name]] = $hash
         $lengths[$nameMap[$name]] = $bytes.Length
     }
 
     $certValidation = Validate-CertificateFile $CertificatePath
-    if (-not $certValidation.IsValid) { throw ((L '官方证书校验失败：' 'Official certificate validation failed: ') + ($certValidation.Errors -join '; ')) }
+    if (-not $certValidation.IsValid) { throw ((L '官方证书校验失败：' 'Official certificate validation failed: ') + ($certValidation.Errors -join ', ')) }
     $certBytesBefore = [IO.File]::ReadAllBytes($CertificatePath)
     $time = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     $formatted = Format-SecureBootUEFI -Name db -SignatureOwner $script:OfficialCertificateSignatureOwner -CertificateFilePath $CertificatePath -FormatWithCert -AppendWrite -Time $time -ErrorAction Stop
@@ -2275,7 +2269,7 @@ function New-AdvancedRecoveryTransaction {
     }
     Save-Transaction $transaction
     $script:SelectedCertificatePath = $certEvidence
-    Write-UiLog ((L '中断恢复进度已建立。来源={0}；检查点={1}；目录={2}。未自动执行任何 UEFI 写入。' 'Interrupted recovery progress created. Origin={0}; checkpoint={1}; folder={2}. No UEFI write was performed automatically.') -f $Origin,$checkpoint.Stage,$transactionRoot) 'SUCCESS'
+    Write-UiLog ((L '中断恢复进度已建立。来源={0}，检查点={1}，目录={2}。未自动执行任何 UEFI 写入。' 'Interrupted recovery progress created. Origin={0}, checkpoint={1}, folder={2}. No UEFI write was performed automatically.') -f $Origin,$checkpoint.Stage,$transactionRoot) 'SUCCESS'
     [Windows.Forms.MessageBox]::Show(((L '已重建进度记录，但没有执行 UEFI 写入。文件位置：' 'Saved progress was rebuilt without any UEFI write. Folder: ') + [Environment]::NewLine + $transactionRoot), $script:AppName, 'OK', 'Information') | Out-Null
     return $transaction
 }
@@ -2305,14 +2299,14 @@ function Write-RecoveryPackageManifest {
 function Export-RecoveryPackage {
     if ($null -eq $script:CurrentTransaction) { throw (L '当前没有可导出的修复进度。' 'There is no repair progress to export.') }
     $explanationZh = @'
-恢复文件用于软件在修复过程中意外关闭、重启或进度记录损坏后，重新确认当前 active Keys 对应哪一个可继续检查点。
+恢复文件用于软件在修复过程中意外关闭、重启或进度记录损坏后，重新确认当前 Active Keys 对应哪一个可继续检查点。
 
-文件内包含四个 Default Keys 备份、设备信息、步骤 SHA-256，以及已验证的微软证书文件（如已选择）。它不会自动恢复 Keys，也不会自动执行下一次写入；导入后仍要重新读取真实 UEFI 状态并再次确认。
+文件内包含四个 Default Keys 备份、设备信息、步骤 SHA-256，以及已验证的微软证书文件（如已选择）。它不会自动恢复 Keys，也不会自动执行下一次写入。导入后仍要重新读取真实 UEFI 状态并再次确认。
 
 该ZIP包含Default Keys备份，请仅保存在你信任的位置，不要上传公开平台。软件仅在你点击「继续」并通过另存为窗口选择目标后生成文件。
 '@
     $explanationEn = @'
-The recovery file lets the assistant verify which checkpoint the active keys match after an unexpected close, restart, or damaged progress record.
+The recovery file lets the assistant verify which checkpoint the Active Keys match after an unexpected close, restart, or damaged progress record.
 
 It contains the four Default Keys backups, device information, step SHA-256 hashes, and the validated Microsoft certificate file when available. It never restores keys or performs the next write automatically. Importing it still requires a fresh read of the real UEFI state and another confirmation.
 
@@ -2473,12 +2467,12 @@ function Show-AdvancedRecoveryDialog {
     $label.Location = New-Object Drawing.Point(24,58)
     $label.Size = New-Object Drawing.Size(640,142)
     $advancedZh = @'
-仅在修复过程被意外中断、记录丢失，或已经出现部分 active Keys 但软件无法确认进度时使用。
+仅在修复过程被意外中断、记录丢失，或已经出现部分 Active Keys 但软件无法确认进度时使用。
 
-软件不会根据 Key 数量猜测。它必须使用先前保存的恢复文件，或者用户选择的四个 Default Keys 备份和微软官方证书，逐字节核对当前 active 变量、SHA-256、设备信息和理论目标。只有精确匹配可继续检查点时才会重建进度；不会自动写入任何 UEFI 变量。
+软件不会根据 Key 数量猜测。它必须使用先前保存的恢复文件，或者用户选择的四个 Default Keys 备份和微软官方证书，逐字节核对当前 Active 变量、SHA-256、设备信息和理论目标。只有精确匹配可继续检查点时才会重建进度。不会自动写入任何 UEFI 变量。
 '@
     $advancedEn = @'
-Use this only when a repair was unexpectedly interrupted, transaction records are missing, or partial active keys exist and the assistant cannot prove the current checkpoint.
+Use this only when a repair was unexpectedly interrupted, transaction records are missing, or partial Active Keys exist and the assistant cannot prove the current checkpoint.
 
 The assistant never guesses from key count. It must use a previously saved recovery file, or user-selected backups of all four Default Keys plus the official Microsoft certificate, to compare active variables, SHA-256 hashes, device information, and the theoretical target byte-for-byte. Progress is rebuilt only after an exact checkpoint match. No UEFI variable is written automatically.
 '@
@@ -2508,7 +2502,7 @@ The assistant never guesses from key count. It must use a previously saved recov
     $form.Controls.Add($cancel)
 
     $note = New-Object Windows.Forms.Label
-    $note.Text = L '成功重建后，软件只会恢复「下一步可验证状态」，每一次新写入仍需用户确认。' 'After successful reconstruction, the assistant only restores a verified next-step state; every new write still requires user confirmation.'
+    $note.Text = L '成功重建后，软件只会恢复「下一步可验证状态」，每一次新写入仍需用户确认。' 'After successful reconstruction, the assistant only restores a verified next-step state. Every new write still requires user confirmation.'
     $note.ForeColor = [Drawing.Color]::DarkRed
     $note.Location = New-Object Drawing.Point(28,310)
     $note.Size = New-Object Drawing.Size(630,44)
@@ -2735,7 +2729,7 @@ function New-RepairTransaction {
         AdvancedRecoveryAcknowledgedAt = ''
     }
     Save-Transaction $transaction
-    Write-UiLog ((L '已创建进度记录 {0}，并备份四个 Default 变量。目录：{1}' 'Progress record {0} was created and all four Default variables were backed up. Folder: {1}') -f $transactionId,$transactionRoot) 'SUCCESS'
+    Write-UiLog ((L '已创建进度记录 {0}，并备份四个 BIOS 默认 Keys。目录：{1}' 'Progress record {0} was created and all four BIOS factory Keys were backed up. Folder: {1}') -f $transactionId,$transactionRoot) 'SUCCESS'
     [Windows.Forms.MessageBox]::Show(((L '已创建修复进度和四个 Default Keys 备份。保存位置：' 'The repair progress and four Default Keys backups were created at: ') + [Environment]::NewLine + $transactionRoot), $script:AppName, 'OK', 'Information') | Out-Null
     return $transaction
 }
@@ -2819,7 +2813,7 @@ function Invoke-WriteDbDefault {
             throw 'db回读长度或SHA-256与dbDefault不一致。'
         }
         Set-TransactionStepComplete 'DbDefault'
-        Write-UiLog (L 'dbDefault → db完成，长度与SHA-256回读一致。' 'dbDefault -> db completed; read-back length and SHA-256 match.') 'SUCCESS'
+        Write-UiLog (L 'dbDefault → db完成，长度与SHA-256回读一致。' 'dbDefault -> db completed. Read-back length and SHA-256 match.') 'SUCCESS'
     } catch {
         Set-TransactionFailure 'DbDefault' $_.Exception.Message
         throw
@@ -2829,7 +2823,7 @@ function Invoke-WriteDbDefault {
 function Invoke-ValidateAndStoreCertificate {
     param([string]$Path)
     $validation = Validate-CertificateFile $Path
-    if (-not $validation.IsValid) { throw ('证书校验失败：' + ($validation.Errors -join '；')) }
+    if (-not $validation.IsValid) { throw ('证书校验失败：' + ($validation.Errors -join '，')) }
     $script:SelectedCertificatePath = $Path
     if ($null -ne $script:CurrentTransaction) {
         $evidence = Join-Path $script:CurrentTransaction.EvidenceRoot $script:OfficialCertificateFileName
@@ -2841,7 +2835,7 @@ function Invoke-ValidateAndStoreCertificate {
         $script:CurrentTransaction.Certificate.Thumbprint = $validation.CertificateThumbprint
         Save-Transaction $script:CurrentTransaction
     }
-    Write-UiLog ((L '证书校验通过。SHA-256={0}；MD5={1}（现场计算，仅供识别）' 'Certificate validation passed. SHA-256={0}; MD5={1} (calculated at runtime for identification only)') -f $validation.SHA256, $validation.MD5) 'SUCCESS'
+    Write-UiLog ((L '证书校验通过。SHA-256={0}。MD5={1}（现场计算，仅供识别）' 'Certificate validation passed. SHA-256={0}. MD5={1} (calculated at runtime for identification only)') -f $validation.SHA256, $validation.MD5) 'SUCCESS'
     return $validation
 }
 
@@ -2888,7 +2882,7 @@ function Invoke-Append2023Certificate {
     $protectedValidation = Validate-CertificateFile $protectedCertPath
     if (-not $protectedValidation.IsValid) {
         Remove-Item -LiteralPath $protectedCertPath -Force -ErrorAction SilentlyContinue
-        throw ('受保护证书副本校验失败：' + ($protectedValidation.Errors -join '；'))
+        throw ('证书副本校验失败：' + ($protectedValidation.Errors -join '，'))
     }
     $certPath = $protectedCertPath
     $certBytesBefore = [IO.File]::ReadAllBytes($certPath)
@@ -2900,11 +2894,11 @@ function Invoke-Append2023Certificate {
         $script:CurrentTransaction.Certificate.FormattedLength = 0
         Save-Transaction $script:CurrentTransaction
         Set-TransactionStepComplete 'Db2023'
-        Write-UiLog (L 'dbDefault已经包含经完整DER确认的Windows UEFI CA 2023；已跳过重复追加。' 'dbDefault already contains the exact Windows UEFI CA 2023 DER certificate; duplicate append was skipped.') 'SUCCESS'
+        Write-UiLog (L 'dbDefault已经包含经完整DER确认的Windows UEFI CA 2023，已跳过重复追加。' 'dbDefault already contains the exact Windows UEFI CA 2023 DER certificate. Duplicate append was skipped.') 'SUCCESS'
         return
     }
     if ($currentNameFound -and -not $currentDerFound) {
-        throw '当前db出现Windows UEFI CA 2023名称，但未找到官方证书完整DER字节；为避免误判，禁止追加。'
+        throw '当前db出现Windows UEFI CA 2023名称，但未找到官方证书完整DER字节。为避免误判，禁止追加。'
     }
     if (-not (Confirm-DangerousAction (L '追加2023证书' 'Append the 2023 certificate') (L '即将把Windows UEFI CA 2023以EFI Signature List格式追加到活动db。确认继续吗？' 'Windows UEFI CA 2023 will be appended to the active db as an EFI Signature List. Continue?'))) { return }
     Set-TransactionPending 'Db2023'
@@ -2932,7 +2926,7 @@ function Invoke-Append2023Certificate {
         if (-not (Test-ContainsByteSequence $active.Bytes $certBytes)) { throw '活动db中未找到完整证书DER字节。' }
         if (-not $nameFound) { throw '活动db中未找到Windows UEFI CA 2023名称。' }
         Set-TransactionStepComplete 'Db2023'
-        Write-UiLog (L 'Windows UEFI CA 2023已追加，长度、SHA-256、逐字节、DER内容和名称五项验证通过。' 'Windows UEFI CA 2023 was appended; length, SHA-256, byte-for-byte, DER-content, and name checks all passed.') 'SUCCESS'
+        Write-UiLog (L 'Windows UEFI CA 2023已追加，长度、SHA-256、逐字节、DER内容和名称五项验证通过。' 'Windows UEFI CA 2023 was appended. Length, SHA-256, byte-for-byte, DER-content, and name checks all passed.') 'SUCCESS'
     } catch {
         Set-TransactionFailure 'Db2023' $_.Exception.Message
         throw
@@ -2985,7 +2979,7 @@ function Invoke-RestoreDefaultVariable {
             if (-not $setupAfter.Exists -or $setupAfter.Bytes[0] -ne 0) { throw 'PK写入后SetupMode未变为0。' }
         }
         Set-TransactionStepComplete $StepName
-        Write-UiLog ((L '{0} → {1} 完成，回读长度与SHA-256一致，前序变量未变化。' '{0} -> {1} completed; read-back length and SHA-256 match, and earlier variables are unchanged.') -f $DefaultName, $TargetName) 'SUCCESS'
+        Write-UiLog ((L '{0} → {1} 完成，回读长度与SHA-256一致，前序变量未变化。' '{0} -> {1} completed. Read-back length and SHA-256 match, and earlier variables are unchanged.') -f $DefaultName, $TargetName) 'SUCCESS'
     } catch {
         Set-TransactionFailure $StepName $_.Exception.Message
         throw
@@ -3000,7 +2994,7 @@ function Assert-OfficialRotationPreconditions {
     if (-not $State.Power.IsSafeForWrite) { throw '运行官方轮换前必须连接交流电源，且笔记本电量至少30%。' }
     $bitLockerReason = Get-BitLockerBlockReason -BitLocker $State.BitLocker
     if (-not [string]::IsNullOrWhiteSpace($bitLockerReason)) { throw $bitLockerReason }
-    if (Test-PendingWindowsReboot) { throw 'Windows存在待处理重启；请先正常重启并重新检测。' }
+    if (Test-PendingWindowsReboot) { throw 'Windows存在待处理重启。请先正常重启并重新检测。' }
 }
 
 function Invoke-OfficialRotation {
@@ -3010,7 +3004,7 @@ function Invoke-OfficialRotation {
         Write-UiLog (L '微软官方轮换已经完成，无需重复触发。' 'The Microsoft official rotation is already complete; it will not be triggered again.') 'SUCCESS'
         return
     }
-    if (-not (Confirm-DangerousAction (L '运行微软官方轮换' 'Run Microsoft official rotation') (L '软件将使用Windows自带Secure-Boot-Update任务处理2023证书。首次触发时会把AvailableUpdates设置为0x5944；若更新已在进行，则不会覆盖现有进度位。该步骤可能要求重启。确认继续吗？' 'The assistant will use the Windows Secure-Boot-Update task to process the 2023 certificates. On the first trigger it sets AvailableUpdates to 0x5944; existing progress bits are not overwritten. A restart may be required. Continue?'))) { return }
+    if (-not (Confirm-DangerousAction (L '运行微软官方轮换' 'Run Microsoft official rotation') (L '软件将使用Windows自带Secure-Boot-Update任务处理2023证书。首次触发时会把AvailableUpdates设置为0x5944。若更新已在进行，则不会覆盖现有进度位。该步骤可能要求重启。确认继续吗？' 'The assistant will use the Windows Secure-Boot-Update task to process the 2023 certificates. On the first trigger it sets AvailableUpdates to 0x5944. Existing progress bits are not overwritten. A restart may be required. Continue?'))) { return }
     $start = Get-Date
     if ($null -ne $script:CurrentTransaction) { Set-TransactionPending 'OfficialRotation' }
     try {
@@ -3021,7 +3015,7 @@ function Invoke-OfficialRotation {
             New-ItemProperty -Path $root -Name AvailableUpdates -PropertyType DWord -Value $script:AvailableUpdatesAll -Force | Out-Null
             Write-UiLog (L 'AvailableUpdates已设置为0x5944。' 'AvailableUpdates was set to 0x5944.') 'INFO'
         } else {
-            Write-UiLog ((L '检测到官方轮换已存在进度：Status={0}，AvailableUpdates={1}；未覆盖现有位。' 'Existing official rotation progress detected: Status={0}, AvailableUpdates={1}; existing bits were not overwritten.') -f $status, $state.Servicing.AvailableUpdatesHex) 'INFO'
+            Write-UiLog ((L '检测到官方轮换已存在进度：Status={0}，AvailableUpdates={1}。未覆盖现有位。' 'Existing official rotation progress detected: Status={0}, AvailableUpdates={1}. Existing bits were not overwritten.') -f $status, $state.Servicing.AvailableUpdatesHex) 'INFO'
         }
         Start-ScheduledTask -TaskPath '\Microsoft\Windows\PI\' -TaskName 'Secure-Boot-Update'
         Write-UiLog (L '微软Secure-Boot-Update任务已启动，等待任务结束并回读状态。' 'The Microsoft Secure-Boot-Update task was started. Waiting for completion and state read-back.') 'INFO'
@@ -3119,7 +3113,7 @@ $resumeLaunch
         Language = $script:Language
         ProtectedRuntimePath = $script:ProtectedRuntimePath
         ProtectedRuntimeSha256 = $runtimeHash
-        ExpectedBehavior = L '登录后一次性启动并先删除续跑任务；只重新检测，不会自动执行新的UEFI写入。' 'One-time launch after sign-in; the resume task is removed first. The assistant only re-detects and never performs a new UEFI write automatically.'
+        ExpectedBehavior = L '登录后一次性启动并先删除续跑任务。只重新检测，不会自动执行新的UEFI写入。' 'One-time launch after sign-in. The resume task is removed first. The assistant only re-detects and never performs a new UEFI write automatically.'
     }
     Write-JsonAtomic -Path (Join-Path $script:AppDataRoot 'resume-state.json') -Object $resumeState
     Protect-AppDataDirectory -Path $script:AppDataRoot
@@ -3138,7 +3132,7 @@ function Invoke-RebootWithResume {
         if (-not $preState.Power.IsSafeForWrite) { throw (L '进入BIOS前必须连接交流电源，且笔记本电量至少30%。' 'AC power must be connected and a laptop battery must be at least 30% before entering UEFI setup.') }
         $bitLockerReason = Get-BitLockerBlockReason -BitLocker $preState.BitLocker
         if (-not [string]::IsNullOrWhiteSpace($bitLockerReason)) { throw $bitLockerReason }
-        if (Test-PendingWindowsReboot) { throw (L 'Windows存在待处理重启；请先正常重启并重新检测，再进入BIOS。' 'Windows has a pending restart. Restart normally and re-detect before entering UEFI setup.') }
+        if (Test-PendingWindowsReboot) { throw (L 'Windows存在待处理重启。请先正常重启并重新检测，再进入BIOS。' 'Windows has a pending restart. Restart normally and re-detect before entering UEFI setup.') }
     }
     if (-not (Confirm-DangerousAction (L '准备重启' 'Prepare to restart') (L '软件将创建一次性登录计划任务。重新登录Windows后会自动打开并重新检测，但不会自动继续写入。确认立即重启吗？' 'The assistant will create a one-time sign-in task. After you sign back in, it will reopen and re-detect, but it will not automatically perform another write. Restart now?'))) { return }
 
@@ -3151,7 +3145,7 @@ function Invoke-RebootWithResume {
     }
     Export-DiagnosticSnapshot -State (Get-SystemState) -Reason "BeforeReboot-$Destination"
     if ($Destination -eq 'Firmware') {
-        & "$env:SystemRoot\System32\shutdown.exe" /r /fw /t 5 /c "ASUS/ROG Secure Boot Assistant: restart into UEFI; resume detection after Windows sign-in."
+        & "$env:SystemRoot\System32\shutdown.exe" /r /fw /t 5 /c "ASUS/ROG Secure Boot Assistant: restart into UEFI. Resume detection after Windows sign-in."
     } else {
         & "$env:SystemRoot\System32\shutdown.exe" /r /t 5 /c "ASUS/ROG Secure Boot Assistant: resume detection after restart."
     }
@@ -3171,7 +3165,7 @@ function Show-BitLockerHandlingInfo {
     $state = Get-SystemState
     $message = L ("当前检测结果：`r`nBitLocker状态可判定：{0}`r`n系统盘已完全解密：{1}`r`n保护状态：{2}`r`n卷状态：{3}`r`n`r`n本工具不会自动暂停或解密BitLocker/设备加密。只有明确检测到系统盘已完全解密时，才允许继续进行UEFI写入。请先在Windows中关闭BitLocker/设备加密，并等待解密完成后重新检测。" -f $state.BitLocker.IsKnown,$state.BitLocker.IsFullyDecrypted,$state.BitLocker.ProtectionStatus,$state.BitLocker.VolumeStatus) ("Current detection:`r`nBitLocker state known: {0}`r`nSystem drive fully decrypted: {1}`r`nProtection status: {2}`r`nVolume status: {3}`r`n`r`nThis assistant does not automatically suspend or decrypt BitLocker/device encryption. UEFI writes are allowed only when the system drive is detected as fully decrypted. Turn off BitLocker/device encryption in Windows, wait for decryption to complete, and detect again." -f $state.BitLocker.IsKnown,$state.BitLocker.IsFullyDecrypted,$state.BitLocker.ProtectionStatus,$state.BitLocker.VolumeStatus)
     [Windows.Forms.MessageBox]::Show($message, (L 'BitLocker/设备加密处理' 'BitLocker/device encryption handling'), 'OK', 'Warning') | Out-Null
-    Write-UiLog (L '已显示BitLocker/设备加密处理说明；未执行暂停或解密操作。' 'Displayed BitLocker/device encryption guidance; no suspend or decrypt operation was performed.') 'WARN'
+    Write-UiLog (L '已显示BitLocker/设备加密处理说明。未执行暂停或解密操作。' 'Displayed BitLocker/device encryption guidance. No suspend or decrypt operation was performed.') 'WARN'
 }
 function Invoke-SafeUiAction {
     param([scriptblock]$Action, [string]$Name)
@@ -3248,7 +3242,7 @@ function Show-SecureBootEnableGuidance {
 
 function Show-BootChainRepairDialog {
     param([object]$State)
-    $message = (L ("当前检测结果：`r`n{0}`r`n`r`nWindows Boot Manager首启动：{1}`r`nWindows Boot Manager路径：{2}`r`n可疑固件启动项：{3}`r`n`r`n继续后将把Windows Boot Manager设为固件首启动项，并确认路径为标准Windows启动文件。该操作不会修改Secure Boot Keys，也不会启用Secure Boot。`r`n`r`n修复步骤：点击确认执行修复 → 修复结束后点击「重新检测」 → 重新检测显示启动链通过后，再进入BIOS启用Secure Boot。若重新检测仍异常，不要清Keys或Restore Factory Keys，请按排查说明处理。" -f $State.BootChain.Message,$State.BootChain.WindowsBootManagerFirst,$State.BootChain.WindowsBootManagerPath,$(if ([string]::IsNullOrWhiteSpace([string]$State.BootChain.SuspiciousFirmwareEntries)) { '无' } else { $State.BootChain.SuspiciousFirmwareEntries })) ("Current detection:`r`n{0}`r`n`r`nWindows Boot Manager first: {1}`r`nWindows Boot Manager path: {2}`r`nSuspicious firmware entries: {3}`r`n`r`nContinuing will set Windows Boot Manager as the first firmware boot entry and confirm the standard Windows boot file path. This does not modify Secure Boot Keys and does not enable Secure Boot.`r`n`r`nRepair steps: confirm the repair -> click Detect again after the repair -> enable Secure Boot in BIOS only after the boot-chain check passes. If detection is still abnormal, do not clear Keys or use Restore Factory Keys; follow the checking guidance." -f $State.BootChain.Message,$State.BootChain.WindowsBootManagerFirst,$State.BootChain.WindowsBootManagerPath,$(if ([string]::IsNullOrWhiteSpace([string]$State.BootChain.SuspiciousFirmwareEntries)) { 'None' } else { $State.BootChain.SuspiciousFirmwareEntries })))
+    $message = (L ("当前检测结果：`r`n{0}`r`n`r`nWindows Boot Manager首启动：{1}`r`nWindows Boot Manager路径：{2}`r`n可疑固件启动项：{3}`r`n`r`n继续后将把Windows Boot Manager设为固件首启动项，并确认路径为标准Windows启动文件。该操作不会修改Secure Boot Keys，也不会启用Secure Boot。`r`n`r`n修复步骤：点击确认执行修复 → 修复结束后点击「重新检测」 → 重新检测显示启动链通过后，再进入BIOS启用Secure Boot。若重新检测仍异常，不要清Keys或Restore Factory Keys，请按排查说明处理。" -f $State.BootChain.Message,$State.BootChain.WindowsBootManagerFirst,$State.BootChain.WindowsBootManagerPath,$(if ([string]::IsNullOrWhiteSpace([string]$State.BootChain.SuspiciousFirmwareEntries)) { '无' } else { $State.BootChain.SuspiciousFirmwareEntries })) ("Current detection:`r`n{0}`r`n`r`nWindows Boot Manager first: {1}`r`nWindows Boot Manager path: {2}`r`nSuspicious firmware entries: {3}`r`n`r`nContinuing will set Windows Boot Manager as the first firmware boot entry and confirm the standard Windows boot file path. This does not modify Secure Boot Keys and does not enable Secure Boot.`r`n`r`nRepair steps: confirm the repair -> click Detect again after the repair -> enable Secure Boot in BIOS only after the boot-chain check passes. If detection is still abnormal, do not clear Keys or use Restore Factory Keys. Follow the checking guidance." -f $State.BootChain.Message,$State.BootChain.WindowsBootManagerFirst,$State.BootChain.WindowsBootManagerPath,$(if ([string]::IsNullOrWhiteSpace([string]$State.BootChain.SuspiciousFirmwareEntries)) { 'None' } else { $State.BootChain.SuspiciousFirmwareEntries })))
     $result = [Windows.Forms.MessageBox]::Show($message, (L '修复Windows Boot Manager启动项' 'Repair Windows Boot Manager boot entry'), 'OKCancel', 'Warning', 'Button2')
     if ($result -ne [Windows.Forms.DialogResult]::OK) { return }
     Repair-WindowsBootManagerOrder
@@ -3257,7 +3251,7 @@ function Show-BootChainRepairDialog {
 
 function Show-BootChainManualReviewDialog {
     param([object]$State)
-    $message = (L ("当前active Keys已包含2023证书，但软件无法确认启动链可安全启用Secure Boot。`r`n`r`n{0}`r`n`r`n处理建议：{1}`r`n`r`n下一步：{2}`r`n`r`n请先在Windows中检查Windows Boot Manager、EFI启动文件、第三方启动器、外接启动项以及BIOS中的CSM/Option ROM设置。完成后回到本软件点击「重新检测」，确认状态正常后再进入BIOS启用Secure Boot。不要继续清Keys，也不要使用Restore Factory Keys。`r`n`r`n深度诊断：{3}" -f $State.BootChain.Message,$State.BootChain.ManualActionMessage,$State.BootChain.ManualReviewWorkflow,$State.BootChain.DeepDiagnosticsMessage) ("The active Keys already contain 2023 certificates, but the assistant cannot confirm that the boot chain is safe for enabling Secure Boot.`r`n`r`n{0}`r`n`r`nAction: {1}`r`n`r`nNext step: {2}`r`n`r`nCheck Windows Boot Manager, EFI boot files, third-party bootloaders, external boot entries, and BIOS CSM/Option ROM settings first. Then return to this assistant and click Detect again. Enable Secure Boot in BIOS only after the detected state is normal. Do not clear the Keys or use Restore Factory Keys.`r`n`r`nDeep diagnostics: {3}" -f $State.BootChain.Message,$State.BootChain.ManualActionMessage,$State.BootChain.ManualReviewWorkflow,$State.BootChain.DeepDiagnosticsMessage))
+    $message = (L ("当前 Active Keys 已包含 2023 证书，但软件无法确认启动链可安全启用Secure Boot。`r`n`r`n{0}`r`n`r`n处理建议：{1}`r`n`r`n下一步：{2}`r`n`r`n请先在Windows中检查Windows Boot Manager、EFI启动文件、第三方启动器、外接启动项以及BIOS中的CSM/Option ROM设置。完成后回到本软件点击「重新检测」，确认状态正常后再进入BIOS启用Secure Boot。不要继续清Keys，也不要使用Restore Factory Keys。`r`n`r`n深度诊断：{3}" -f $State.BootChain.Message,$State.BootChain.ManualActionMessage,$State.BootChain.ManualReviewWorkflow,$State.BootChain.DeepDiagnosticsMessage) ("Active Keys already contain 2023 certificates, but the assistant cannot confirm that the boot chain is safe for enabling Secure Boot.`r`n`r`n{0}`r`n`r`nAction: {1}`r`n`r`nNext step: {2}`r`n`r`nCheck Windows Boot Manager, EFI boot files, third-party bootloaders, external boot entries, and BIOS CSM/Option ROM settings first. Then return to this assistant and click Detect again. Enable Secure Boot in BIOS only after the detected state is normal. Do not clear the Keys or use Restore Factory Keys.`r`n`r`nDeep diagnostics: {3}" -f $State.BootChain.Message,$State.BootChain.ManualActionMessage,$State.BootChain.ManualReviewWorkflow,$State.BootChain.DeepDiagnosticsMessage))
     [Windows.Forms.MessageBox]::Show($message, (L '启动链需要先排查' 'Boot chain needs checking first'), 'OK', 'Warning') | Out-Null
 }
 
@@ -3349,7 +3343,7 @@ function Update-StateGrid {
         @((L 'Secure Boot实际启用' 'Secure Boot enabled'),$State.ConfirmSecureBoot),
         @((L 'Secure Boot确认可读' 'Secure Boot confirmation readable'),$State.ConfirmSecureBootReadable),
         @((L '活动变量读取完整' 'Active variables readable'),$State.ActiveVariablesReadable),
-        @((L 'Default变量读取完整' 'Default variables readable'),$State.DefaultVariablesReadable),
+        @((L 'BIOS默认Keys读取完整' 'BIOS factory Keys readable'),$State.DefaultVariablesReadable),
         @('PK',("{0} / {1} bytes" -f $State.Variables.PK.Exists,$State.Variables.PK.Length)),
         @('KEK',("{0} / {1} bytes" -f $State.Variables.KEK.Exists,$State.Variables.KEK.Length)),
         @('db',("{0} / {1} bytes" -f $State.Variables.db.Exists,$State.Variables.db.Length)),
@@ -3401,7 +3395,7 @@ function Update-StateGrid {
         )
         foreach ($bootRow in $bootRows) { $rows += ,$bootRow }
     } elseif ($State.ConfirmSecureBoot) {
-        $rows += ,@((L '启动链检查' 'Boot-chain check'),(L 'Secure Boot 已启用；启动链检查只在启用前作为拦截条件，当前无需处理。' 'Secure Boot is already enabled. Boot-chain checks are used only before enabling it; no action is needed now.'))
+        $rows += ,@((L '启动链检查' 'Boot-chain check'),(L 'Secure Boot 已启用。启动链检查只在启用前作为拦截条件，当前无需处理。' 'Secure Boot is already enabled. Boot-chain checks are used only before enabling it. No action is needed now.'))
     }
 
     foreach ($row in $rows) { $script:Grid.Rows.Add($row[0], [string]$row[1]) | Out-Null }
@@ -3414,11 +3408,11 @@ function Update-OverviewGrid {
 
     $rows = New-Object System.Collections.ArrayList
     [void]$rows.Add(@((L '设备' 'Device'),("{0} / {1}" -f $State.Manufacturer,$State.Model)))
-    [void]$rows.Add(@((L '固件状态' 'Firmware state'),("UEFI={0}; SetupMode={1}; SecureBoot={2}" -f $State.IsUEFI,$State.SetupMode,$State.ConfirmSecureBoot)))
-    [void]$rows.Add(@((L '活动Keys' 'Active keys'),("PK={0}; KEK={1}; db={2}; dbx={3}" -f $State.Variables.PK.Exists,$State.Variables.KEK.Exists,$State.Variables.db.Exists,$State.Variables.dbx.Exists)))
-    [void]$rows.Add(@((L '2023证书/KEK' '2023 certificates/KEK'),("Windows={0}; Microsoft={1}; OptionROM={2}; KEK={3}" -f $State.CertificateFlags.WindowsUEFICA2023,$State.CertificateFlags.MicrosoftUEFICA2023,$State.CertificateFlags.OptionROMUEFICA2023,$State.CertificateFlags.KEK2KCA2023)))
-    [void]$rows.Add(@((L 'Windows轮换状态' 'Windows rotation status'),("{0}; AvailableUpdates={1}" -f $State.Servicing.UEFICA2023Status,$State.Servicing.AvailableUpdatesHex)))
-    [void]$rows.Add(@((L 'BitLocker / 电源' 'BitLocker / power'),("Known={0}; Decrypted={1}; Protected={2}; AC={3}; Battery={4}" -f $State.BitLocker.IsKnown,$State.BitLocker.IsFullyDecrypted,$State.BitLocker.IsProtected,$State.Power.PowerLineStatus,$(if ($null -eq $State.Power.BatteryPercent) {'N/A'} else {"$($State.Power.BatteryPercent)%"}))))
+    [void]$rows.Add(@((L '固件状态' 'Firmware state'),("UEFI={0}, SetupMode={1}, SecureBoot={2}" -f $State.IsUEFI,$State.SetupMode,$State.ConfirmSecureBoot)))
+    [void]$rows.Add(@((L 'Active Keys' 'Active Keys'),("PK={0}, KEK={1}, db={2}, dbx={3}" -f $State.Variables.PK.Exists,$State.Variables.KEK.Exists,$State.Variables.db.Exists,$State.Variables.dbx.Exists)))
+    [void]$rows.Add(@((L '2023证书/KEK' '2023 certificates/KEK'),("Windows={0}, Microsoft={1}, OptionROM={2}, KEK={3}" -f $State.CertificateFlags.WindowsUEFICA2023,$State.CertificateFlags.MicrosoftUEFICA2023,$State.CertificateFlags.OptionROMUEFICA2023,$State.CertificateFlags.KEK2KCA2023)))
+    [void]$rows.Add(@((L 'Windows轮换状态' 'Windows rotation status'),("{0}, AvailableUpdates={1}" -f $State.Servicing.UEFICA2023Status,$State.Servicing.AvailableUpdatesHex)))
+    [void]$rows.Add(@((L 'BitLocker / 电源' 'BitLocker / power'),("Known={0}, Decrypted={1}, Protected={2}, AC={3}, Battery={4}" -f $State.BitLocker.IsKnown,$State.BitLocker.IsFullyDecrypted,$State.BitLocker.IsProtected,$State.Power.PowerLineStatus,$(if ($null -eq $State.Power.BatteryPercent) {'N/A'} else {"$($State.Power.BatteryPercent)%"}))))
 
     $showBootChain = ($State.Classification -in @('SecureBootDisabledWithKeys','BootChainRepairRequired','BootChainReviewRequired'))
     if ($showBootChain) {
@@ -3479,9 +3473,9 @@ $transactionRoot
 受保护的设置/续跑/证书目录（$appDataExists）：
 $script:AppDataRoot
 
-该目录可能包含设置、一次性续跑状态、受保护证书文件，以及明确操作期间的临时导入/导出目录；临时目录使用后会删除。
+该目录可能包含设置、一次性续跑状态、证书文件，以及明确操作期间的临时导入/导出目录。临时目录使用后会删除。
 
-日志仅在确认 OOBE 并开始检测后创建；进度目录仅在开始修复时创建；导出ZIP仅在你通过「另存为」选择位置后创建。软件不会自动上传任何文件。
+日志仅在确认 OOBE 并开始检测后创建。进度目录仅在开始修复时创建。导出ZIP仅在你通过「另存为」选择位置后创建。软件不会自动上传任何文件。
 "@
     }
     [Windows.Forms.MessageBox]::Show($text, (L '软件创建的文件与目录' 'Files and folders created by the assistant'), 'OK', 'Information') | Out-Null
@@ -3649,7 +3643,7 @@ function Refresh-MainUi {
     }
 
     Set-ContextButtonVisibility $script:CurrentState
-    Write-UiLog ((L '状态刷新完成：{0}; WriteAllowed={1}; BlockReason={2}; ActionBlockReason={3}' 'State refresh completed: {0}; WriteAllowed={1}; BlockReason={2}; ActionBlockReason={3}') -f $script:CurrentState.Classification, $script:CurrentState.WriteAllowed, $script:CurrentState.BlockReason, $script:CurrentState.ActionBlockReason) 'INFO'
+    Write-UiLog ((L '状态刷新完成：{0}, WriteAllowed={1}, BlockReason={2}, ActionBlockReason={3}' 'State refresh completed: {0}, WriteAllowed={1}, BlockReason={2}, ActionBlockReason={3}') -f $script:CurrentState.Classification, $script:CurrentState.WriteAllowed, $script:CurrentState.BlockReason, $script:CurrentState.ActionBlockReason) 'INFO'
     if ($script:CurrentState.PostPkActiveStateVerified -and $null -ne $script:CurrentTransaction -and [string]$script:CurrentTransaction.Status -eq 'Locked') {
         Write-UiLog (L '当前活动Secure Boot状态已通过重新检测，继续按真实固件状态判断。' 'Post-PK transaction anomaly recognized from the current active firmware state; continuing from the real firmware state.') 'WARN'
     }
@@ -3669,7 +3663,7 @@ Certificate validation passed
 File: $($validation.FileName)
 Size: $($validation.Size) bytes
 SHA-256: $($validation.SHA256)
-MD5: $($validation.MD5) (calculated at runtime for identification only; not used for trust)
+MD5: $($validation.MD5) (calculated at runtime for identification only, not used for trust)
 SHA-1 Thumbprint: $($validation.CertificateThumbprint)
 Subject: $($validation.Subject)
 Issuer: $($validation.Issuer)
@@ -3682,7 +3676,7 @@ Validity: $($validation.NotBefore) to $($validation.NotAfter)
 文件：$($validation.FileName)
 大小：$($validation.Size) 字节
 SHA-256：$($validation.SHA256)
-MD5：$($validation.MD5)（现场计算，仅供文件识别，不作为安全判定）
+MD5：$($validation.MD5)（现场计算，仅供文件识别，安全判定不依赖MD5）
 SHA-1 Thumbprint：$($validation.CertificateThumbprint)
 Subject：$($validation.Subject)
 Issuer：$($validation.Issuer)
@@ -3695,7 +3689,7 @@ Issuer：$($validation.Issuer)
 function Export-DiagnosticPackage {
     if (-not $script:SessionLogRoot -or -not (Test-Path $script:SessionLogRoot)) { throw (L '当前没有可导出的日志。' 'There are no logs available to export.') }
     $explanation = L @'
-诊断报告用于向开发者或技术支持提供状态分析。它包含本次检测日志、脱敏后的系统状态、相关事件和错误编号；不包含Default Keys原始备份、BitLocker恢复密钥或个人文件。
+诊断报告用于向开发者或技术支持提供状态分析。它包含本次检测日志、脱敏后的系统状态、相关事件和错误编号。不包含Default Keys原始备份、BitLocker恢复密钥或个人文件。
 
 只有在你继续并通过「另存为」选择保存位置后，软件才会生成ZIP文件。
 '@ @'
@@ -3745,13 +3739,13 @@ function Resolve-DetectedPostPkReboot {
         $script:CurrentTransaction.PendingOperation = ''
         $script:CurrentTransaction.LastVerifiedAt = (Get-Date).ToString('o')
         Save-Transaction $script:CurrentTransaction
-        Write-UiLog (L '检测到 PK 写入后已经发生 Windows 重启；真实 UEFI 状态和上次哈希验证通过，已恢复到下一阶段。' 'A Windows restart after the PK write was detected. Real UEFI state and saved hashes passed verification; the next stage is unlocked.') 'SUCCESS'
+        Write-UiLog (L '检测到 PK 写入后已经发生 Windows 重启。真实 UEFI 状态和上次哈希验证通过，已恢复到下一阶段。' 'A Windows restart after the PK write was detected. Real UEFI state and saved hashes passed verification. The next stage is unlocked.') 'SUCCESS'
     } else {
         $script:CurrentTransaction.Steps.Reboot = 'Failed'
         $script:CurrentTransaction.Status = 'Locked'
         $script:CurrentTransaction.LastError = '检测到PK写入后发生过重启，但重启后的真实状态验证未通过。'
         Save-Transaction $script:CurrentTransaction
-        Write-UiLog (L '检测到PK写入后已经重启，但状态验证未通过；已锁定后续写入并生成日志。' 'A restart after the PK write was detected, but state verification failed. Further writes are locked and diagnostics were generated.') 'ERROR'
+        Write-UiLog (L '检测到PK写入后已经重启，但状态验证未通过。已锁定后续写入并生成日志。' 'A restart after the PK write was detected, but state verification failed. Further writes are locked and diagnostics were generated.') 'ERROR'
     }
 }
 
@@ -3859,10 +3853,11 @@ function Show-AboutDialog {
     $about.Size = New-Object Drawing.Size(640,440)
     $about.AutoScaleMode = 'Dpi'
     $about.StartPosition = 'CenterParent'
-    $about.FormBorderStyle = 'Sizable'
-    $about.MaximizeBox = $true
-    $about.MinimizeBox = $true
+    $about.FormBorderStyle = 'FixedDialog'
+    $about.MaximizeBox = $false
+    $about.MinimizeBox = $false
     $about.MinimumSize = New-Object Drawing.Size(640,440)
+    $about.MaximumSize = New-Object Drawing.Size(640,440)
     $about.ShowInTaskbar = $false
     $about.Font = New-Object Drawing.Font((Get-LocalizedFontName), 9)
 
@@ -4243,10 +4238,10 @@ function Show-MainForm {
 
     $script:MainToolTip = New-Object Windows.Forms.ToolTip
     $toolTip = $script:MainToolTip
-    $toolTip.SetToolTip($script:CertificateSourceButton, (L '使用默认浏览器打开Microsoft官方HTTPS地址；软件本身不下载文件。' 'Opens the official Microsoft HTTPS address in the default browser; the assistant does not download the file.'))
+    $toolTip.SetToolTip($script:CertificateSourceButton, (L '使用默认浏览器打开Microsoft官方HTTPS地址。软件本身不下载文件。' 'Opens the official Microsoft HTTPS address in the default browser. The assistant does not download the file.'))
     $toolTip.SetToolTip($script:RecoveryImportButton, (L '当修复被意外中断、记录丢失或只剩部分 Keys 时，使用恢复文件或 Default Keys 备份校验当前进度。不会强制写入。' 'When a repair was interrupted, its records were lost, or only partial keys remain, use a recovery file or Default Keys backups to check progress. It never forces a write.'))
     $toolTip.SetToolTip($script:RecoveryExportButton, (L '保存恢复所需信息，方便以后继续处理中断的流程。文件只在你选择位置后生成。' 'Saves recovery information for a future interrupted repair. Created only after you choose a destination.'))
-    $toolTip.SetToolTip($script:ExportDiagnosticsButton, (L '导出本次日志、脱敏状态和错误事件；不包含Default Keys原始备份、BitLocker恢复密钥或个人文件。' 'Exports this session''s logs, sanitized state, and error events. It excludes raw Default Keys backups, BitLocker recovery keys, and personal files.'))
+    $toolTip.SetToolTip($script:ExportDiagnosticsButton, (L '导出本次日志、脱敏状态和错误事件。不包含Default Keys原始备份、BitLocker恢复密钥或个人文件。' 'Exports this session''s logs, sanitized state, and error events. It excludes raw Default Keys backups, BitLocker recovery keys, and personal files.'))
 
     $primaryAction = { Invoke-PrimaryAction }
     $refreshAction = { Write-UiLog (L '开始手动重新检测。' 'Manual re-detection started.') 'INFO' }
@@ -4304,7 +4299,7 @@ function Show-MainForm {
     $form.Add_Shown({
         $languageState.Initialized = $true
         if (-not [string]::IsNullOrWhiteSpace($script:TransactionLoadError)) {
-            $loadErrorDisplay = if ($script:Language -eq 'en-US') { 'Transaction recovery validation failed. The unfinished transaction is locked; see diagnostics for technical details.' } else { $script:TransactionLoadError }
+            $loadErrorDisplay = if ($script:Language -eq 'en-US') { 'Transaction recovery validation failed. The unfinished transaction is locked. See diagnostics for technical details.' } else { $script:TransactionLoadError }
             Write-UiLog (((L '恢复信息：{0}' 'Recovery information: {0}') -f $loadErrorDisplay)) 'ERROR'
         }
         Resolve-DetectedPostPkReboot
@@ -4313,7 +4308,7 @@ function Show-MainForm {
             $pending = [string]$script:CurrentTransaction.PendingOperation
             Write-UiLog ((L '发现未完成进度 {0}。上次待执行或可能中断的步骤：{1}。已进入恢复诊断模式，并以真实 UEFI 状态重建进度。' 'Unfinished progress {0} detected. Last pending or interrupted step: {1}. Recovery diagnostics are active and progress is reconstructed from real UEFI state.') -f $script:CurrentTransaction.TransactionId,$pending) 'WARN'
         }
-        Write-UiLog ((L '文件位置：备份根目录={0}；本次日志={1}；受保护状态={2}' 'File locations: backup root={0}; session log={1}; protected state={2}') -f $script:BackupRoot,$script:SessionLogRoot,$script:AppDataRoot) 'INFO'
+        Write-UiLog ((L '文件位置：备份根目录={0}，本次日志={1}，状态目录={2}' 'File locations: backup root={0}, session log={1}, state folder={2}') -f $script:BackupRoot,$script:SessionLogRoot,$script:AppDataRoot) 'INFO'
         Refresh-MainUi -Reason 'ApplicationShown'
     })
     $form.Add_FormClosing({
